@@ -1,0 +1,119 @@
+from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+
+class FloatingMenu(QWidget):
+    clicked = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(50, 50)
+        
+        # Position variables for dragging
+        self.dragging = False
+        self.offset = QPoint()
+
+        # Layout and Button
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+
+        self.button = QPushButton("☰")
+        self.button.setStyleSheet("""
+            QPushButton {
+                background-color: #333333;
+                color: white;
+                border-radius: 25px;
+                font-size: 24px;
+                border: 2px solid #555555;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+            }
+        """)
+        self.button.clicked.connect(self.clicked.emit)
+        layout.addWidget(self.button)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self.offset)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self.dragging = False
+
+class Toolbar(QWidget):
+    toggle_overlay = pyqtSignal()
+    hide_toolbar = pyqtSignal()
+    close_app = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        layout = QHBoxLayout()
+        self.setLayout(layout)
+        
+        # Style for buttons
+        btn_style = """
+            QPushButton {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #555555;
+                border-radius: 5px;
+                padding: 5px;
+                min-width: 30px;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+            }
+        """
+
+        # Toggle Overlay Button
+        self.btn_toggle = QPushButton("👁️")
+        self.btn_toggle.setToolTip("Mostrar/Ocultar Overlay")
+        self.btn_toggle.setStyleSheet(btn_style)
+        self.btn_toggle.clicked.connect(self.toggle_overlay.emit)
+        layout.addWidget(self.btn_toggle)
+
+        # Hide Toolbar Button
+        self.btn_hide = QPushButton("⬇️")
+        self.btn_hide.setToolTip("Ocultar Barra")
+        self.btn_hide.setStyleSheet(btn_style)
+        self.btn_hide.clicked.connect(self.hide_toolbar.emit)
+        layout.addWidget(self.btn_hide)
+
+        # Close App Button
+        self.btn_close = QPushButton("❌")
+        self.btn_close.setToolTip("Cerrar Programa")
+        self.btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: #ff4444;
+                color: white;
+                border: 1px solid #990000;
+                border-radius: 5px;
+                padding: 5px;
+                min-width: 30px;
+            }
+            QPushButton:hover {
+                background-color: #cc0000;
+            }
+        """)
+        self.btn_close.clicked.connect(self.close_app.emit)
+        layout.addWidget(self.btn_close)
