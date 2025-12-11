@@ -57,6 +57,10 @@ class Toolbar(QWidget):
     toggle_overlay = pyqtSignal()
     hide_toolbar = pyqtSignal()
     close_app = pyqtSignal()
+    # New signals for tools
+    tool_pen = pyqtSignal()
+    tool_eraser = pyqtSignal()
+    tool_clear = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -91,6 +95,27 @@ class Toolbar(QWidget):
         self.btn_toggle.setStyleSheet(btn_style)
         self.btn_toggle.clicked.connect(self.toggle_overlay.emit)
         layout.addWidget(self.btn_toggle)
+
+        # Pen Button
+        self.btn_pen = QPushButton("✏️")
+        self.btn_pen.setToolTip("Lápiz")
+        self.btn_pen.setStyleSheet(btn_style)
+        self.btn_pen.clicked.connect(self.tool_pen.emit)
+        layout.addWidget(self.btn_pen)
+
+        # Eraser Button
+        self.btn_eraser = QPushButton("🧹")
+        self.btn_eraser.setToolTip("Borrador")
+        self.btn_eraser.setStyleSheet(btn_style)
+        self.btn_eraser.clicked.connect(self.tool_eraser.emit)
+        layout.addWidget(self.btn_eraser)
+
+        # Clear All Button
+        self.btn_clear = QPushButton("🗑️")
+        self.btn_clear.setToolTip("Limpiar Todo")
+        self.btn_clear.setStyleSheet(btn_style)
+        self.btn_clear.clicked.connect(self.tool_clear.emit)
+        layout.addWidget(self.btn_clear)
 
         # Hide Toolbar Button
         self.btn_hide = QPushButton("⬇️")

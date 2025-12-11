@@ -58,6 +58,11 @@ def main():
     toolbar.toggle_overlay.connect(toggle_overlay_visibility)
     toolbar.hide_toolbar.connect(hide_tools)
     toolbar.close_app.connect(close_start)
+    
+    # Tool Connections
+    toolbar.tool_pen.connect(overlay.set_tool_pen)
+    toolbar.tool_eraser.connect(overlay.set_tool_eraser)
+    toolbar.tool_clear.connect(overlay.clear_canvas)
 
     sys.exit(app.exec())
 
