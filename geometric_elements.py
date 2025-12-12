@@ -127,11 +127,11 @@ class LineObject(DrawingObject):
                 # ...Wait, for hline/vline, p2 might be dummy.
                 # Let's enforce Ref Line has slope defined by its geometric calculation logic?
                 # No, let's look at its type.
-                 
-                 # Simpler fallback: Calculate geometry of ref line.
-                 ref_start, ref_end = self.reference_line._calculate_geometry(rect)
-                 ref_dx = ref_end.x() - ref_start.x()
-                 ref_dy = ref_end.y() - ref_start.y()
+                
+                # Simpler fallback: Calculate geometry of ref line.
+                ref_start, ref_end = self.reference_line._calculate_geometry(rect)
+                ref_dx = ref_end.x() - ref_start.x()
+                ref_dy = ref_end.y() - ref_start.y()
             else:    
                 ref_dx = ref_p2.x() - ref_p1.x()
                 ref_dy = ref_p2.y() - ref_p1.y()
@@ -147,8 +147,8 @@ class LineObject(DrawingObject):
                 # Return start and end (sorted in helper)
                 return intersections[0], intersections[-1]
             else:
-                 # Fallback if exactly on edge or erratic
-                 return QPoint(x1, y1), QPoint(x1+dx, y1+dy)
+                # Fallback if exactly on edge or erratic
+                return QPoint(x1, y1), QPoint(x1+dx, y1+dy)
         
         # Standard Line Logic
         p2 = self.p2_obj.pos() 
@@ -347,3 +347,57 @@ class CircleObject(DrawingObject):
         # To Move the strict circle, we just move center.
         # The user can move the defining points separately to reshape.
         pass
+
+class RectangleObject(DrawingObject):
+    def __init__(self, p1_obj, p2_obj, p3_obj, p4_obj, color=Qt.GlobalColor.yellow, width=3):
+        # Points should be ordered usually? Or just 4 points.
+        # Let's assume they are passed in order: TopLeft, TopRight, BottomRight, BottomLeft
+        # Or just 4 corners in any cyclic order.
+        self.points = [p1_obj, p2_obj, p3_obj, p4_obj]
+        self.color = color
+        self.width = width
+    
+    def draw(self, painter, overlay_rect=None):
+        painter.setPen(QPen(self.color, self.width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        
+        # Draw 4 segments
+        pts = [p.pos() for p in self.points]
+        for i in range(4):
+            painter.drawLine(pts[i], pts[(i+1)%4])
+
+    def contains(self, point):
+        # Check distance to each of the 4 segments
+        threshold = 10
+        pos = point
+        x0, y0 = pos.x(), pos.y()
+        
+        pts = [p.pos() for p in self.points]
+        
+        for i in range(4):
+            p1 = pts[i]
+            p2 = pts[(i+1)%4]
+            x1, y1 = p1.x(), p1.y()
+            x2, y2 = p2.x(), p2.y()
+            
+            dx = x2 - x1
+            dy = y2 - y1
+            
+            if dx == 0 and dy == 0: continue
+            
+            len_sq = dx*dx + dy*dy
+            t = ((x0 - x1) * dx + (y0 - y1) * dy) / len_sq
+            
+            # Segment check
+            if 0 <= t <= 1:
+                # Perpendicular distance
+                # |Ax + By + C| / sqrt(A^2+B^2)
+                # -dy*x + dx*y + ...
+                dist = abs(-dy*x0 + dx*y0 + dy*x1 - dx*y1) / math.sqrt(len_sq)
+                if dist <= threshold:
+                    return True
+        return False
+
+    def move(self, dx, dy):
+        for p in self.points:
+            p.move(dx, dy)
+

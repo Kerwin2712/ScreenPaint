@@ -108,6 +108,7 @@ def main():
     # Object Tools
     toolbar.tool_point.connect(overlay.set_tool_point)
     toolbar.tool_hand.connect(overlay.set_tool_hand)
+    toolbar.tool_rectangle.connect(overlay.set_tool_rectangle)
 
     # Ensure UI stays on top when interacting with overlay
     def raise_ui():

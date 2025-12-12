@@ -3,7 +3,7 @@ import math
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
-from geometric_elements import PointObject, LineObject, CircleObject
+from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject
 
 # --- Overlay Class ---
 
@@ -123,6 +123,11 @@ class TransparentOverlay(QWidget):
         self.currentTool = 'hand'
         self.pending_p1 = None
         self._reset_tool_state()
+    
+    def set_tool_rectangle(self):
+        self.currentTool = 'rectangle'
+        self.pending_p1 = None
+        self._reset_tool_state()
 
     def _reset_tool_state(self):
         self.selected_ref_line = None
@@ -176,6 +181,11 @@ class TransparentOverlay(QWidget):
         for obj in self.objects:
             if isinstance(obj, PointObject):
                 obj.draw(painter, rect)
+        
+        # Draw Rectangles
+        for obj in self.objects:
+            if isinstance(obj, RectangleObject):
+                obj.draw(painter, rect)
             
         # 3. Draw Preview
         self._draw_preview(painter)
@@ -187,6 +197,8 @@ class TransparentOverlay(QWidget):
              self._draw_circle_preview(painter)
         elif self.pending_p1 and self.currentTool in ['segment', 'ray', 'line']:
              self._draw_line_preview(painter)
+        elif self.pending_p1 and self.currentTool == 'rectangle':
+             self._draw_rect_preview(painter)
 
     def _draw_pp_preview(self, painter):
         if self.selected_ref_line:
@@ -200,6 +212,25 @@ class TransparentOverlay(QWidget):
         dummy_p2 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
         temp_line = LineObject(self.pending_p1, dummy_p2, self.currentTool, self.brushColor, self.brushSize)
         temp_line.draw(painter, self.rect())
+
+    def _draw_rect_preview(self, painter):
+        mouse_pos = self.mapFromGlobal(QCursor.pos())
+        p1 = self.pending_p1
+        p3 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
+        
+        # Construct vertices
+        # p1 = (x1, y1), p3 = (x3, y3)
+        # p2 = (x3, y1)
+        # p4 = (x1, y3)
+        
+        x1, y1 = p1.x, p1.y
+        x3, y3 = p3.x, p3.y
+        
+        p2 = PointObject(x3, y1, 0, size=0)
+        p4 = PointObject(x1, y3, 0, size=0)
+        
+        temp_rect = RectangleObject(p1, p2, p3, p4, self.brushColor, self.brushSize)
+        temp_rect.draw(painter, self.rect())
 
     def _draw_circle_preview(self, painter):
         mouse_pos = self.mapFromGlobal(QCursor.pos())
@@ -368,6 +399,18 @@ class TransparentOverlay(QWidget):
                         self.pending_p1 = None
                 return
                     
+            if self.currentTool == 'rectangle':
+                # Similar logic to lines: Drag or Click-Click
+                self.press_pos = pos
+                hit_p = self._get_point_at(pos)
+                if not hit_p: hit_p = self._create_point(pos)
+                
+                if not self.pending_p1:
+                    self.pending_p1 = hit_p
+                else:
+                    self._create_rectangle(self.pending_p1, hit_p)
+                return
+            
             if self.currentTool == 'pen':
                 self.drawing = True
 
@@ -404,7 +447,19 @@ class TransparentOverlay(QWidget):
                     if not hit_p: hit_p = self._create_point(pos)
                     
                     self._create_line_object(self.pending_p1, hit_p)
+                    self._create_line_object(self.pending_p1, hit_p)
                     self.pending_p1 = None
+
+            if self.currentTool == 'rectangle' and self.pending_p1 and self.press_pos:
+                drag_threshold = 5
+                dist = (pos - self.press_pos).manhattanLength()
+                
+                if dist > drag_threshold:
+                    hit_p = self._get_point_at(pos)
+                    if not hit_p: hit_p = self._create_point(pos)
+                    
+                    self._create_rectangle(self.pending_p1, hit_p)
+
             
             self.drawing = False
             self.draggingObject = None
@@ -441,7 +496,7 @@ class TransparentOverlay(QWidget):
         if not to_remove: return
         
         # Dependency check:
-        # If Point is removed, Lines/Circles using it must go.
+        # If Point is removed, Lines/Circles/Rectangles using it must go.
         # Simple recursive or iterative check.
         
         final_removal = set(to_remove)
@@ -468,6 +523,12 @@ class TransparentOverlay(QWidget):
                     # Compass list
                     if isinstance(obj.radius_param, tuple): 
                         if obj.radius_param[0] in current_removals or obj.radius_param[1] in current_removals:
+
+                            final_removal.add(obj)
+                            changed = True
+                elif isinstance(obj, RectangleObject):
+                    for p in obj.points:
+                        if p in current_removals:
                             final_removal.add(obj)
                             changed = True
 
@@ -483,6 +544,36 @@ class TransparentOverlay(QWidget):
         
         painter.drawLine(self.lastPoint, currentPoint)
         painter.end()
+        self.update()
+
+    def _create_rectangle(self, p1_obj, p3_obj):
+        # p1 is TopLeft(ish), p3 is BottomRight(ish) - Diagrammatically
+        # We need p2 and p4
+        # p1 = (x1, y1), p3 = (x3, y3)
+        # p2 = (x3, y1)
+        # p4 = (x1, y3)
+        
+        # We only have p1 and p3 objects. 
+        # Requirement: "cada vertice debe ser un punto nuevo" 
+        # But wait, p1 and p3 MIGHT be existing points if the user clicked on them.
+        # Should we use them directly as vertices? 
+        # "al hacer dos clics se ponen dos puntos que formaran la diagonal"
+        # "cada vertice debe ser un punto nuevo" implies the Corners are points.
+        # It's ambiguous if the start/end *clics* are vertices themselves or if they just define position.
+        # If I click an existing point, presumably I want that point to be a vertex.
+        # So I will use p1_obj and p3_obj as 2 vertices.
+        # I need to CREATE p2_obj and p4_obj.
+        
+        x1, y1 = p1_obj.pos().x(), p1_obj.pos().y()
+        x3, y3 = p3_obj.pos().x(), p3_obj.pos().y()
+        
+        p2_obj = self._create_point(QPoint(x3, y1))
+        p4_obj = self._create_point(QPoint(x1, y3))
+        
+        # Order: p1, p2, p3, p4
+        new_rect = RectangleObject(p1_obj, p2_obj, p3_obj, p4_obj)
+        self.objects.append(new_rect)
+        self.pending_p1 = None
         self.update()
 
 if __name__ == "__main__":

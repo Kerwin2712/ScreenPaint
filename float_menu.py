@@ -99,6 +99,7 @@ class Toolbar(QWidget):
     # Signals for Object Tools
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
+    tool_rectangle = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -263,7 +264,43 @@ class Toolbar(QWidget):
         self.circle_menu.addAction(action_compass)
         
         self.btn_circle.setMenu(self.circle_menu)
+        self.btn_circle.setMenu(self.circle_menu)
         layout.addWidget(self.btn_circle)
+
+        # Hook up hover for Circle menu too
+        self.btn_circle.installEventFilter(self)
+        
+        # Rectangle Tool Button
+        self.btn_rect = QPushButton("▭")
+        self.btn_rect.setToolTip("Rectángulo")
+        self.btn_rect.setStyleSheet(btn_style)
+        
+        # Create Rectangle Menu
+        self.rect_menu = QMenu(self)
+        self.rect_menu.setStyleSheet("""
+            QMenu {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                padding: 5px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #444444;
+            }
+        """)
+        
+        action_rect = QAction("Rectángulo", self)
+        action_rect.triggered.connect(self.tool_rectangle.emit)
+        self.rect_menu.addAction(action_rect)
+        
+        self.btn_rect.setMenu(self.rect_menu)
+        layout.addWidget(self.btn_rect)
+
+        # Hook up hover
+        self.btn_rect.installEventFilter(self)
+
 
         # Hook up hover for Circle menu too
         self.btn_circle.installEventFilter(self)
@@ -333,6 +370,9 @@ class Toolbar(QWidget):
                 return True
             elif source == self.btn_circle:
                 self.show_menu(self.btn_circle, self.circle_menu)
+                return True
+            elif source == self.btn_rect:
+                self.show_menu(self.btn_rect, self.rect_menu)
                 return True
         return super().eventFilter(source, event)
 
