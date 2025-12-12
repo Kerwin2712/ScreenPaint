@@ -95,6 +95,10 @@ def main():
     toolbar.tool_line_ray.connect(overlay.set_tool_line_ray)
     toolbar.tool_line_infinite.connect(overlay.set_tool_line_infinite)
 
+    # Object Tools
+    toolbar.tool_point.connect(overlay.set_tool_point)
+    toolbar.tool_hand.connect(overlay.set_tool_hand)
+
     # Ensure UI stays on top when interacting with overlay
     def raise_ui():
         toolbar.raise_()

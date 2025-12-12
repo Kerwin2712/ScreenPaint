@@ -109,6 +109,9 @@ class Toolbar(QWidget):
     tool_line_segment = pyqtSignal()
     tool_line_ray = pyqtSignal()
     tool_line_infinite = pyqtSignal()
+    # Signals for Object Tools
+    tool_point = pyqtSignal()
+    tool_hand = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -224,6 +227,20 @@ class Toolbar(QWidget):
         self.btn_line.installEventFilter(self)
         
         layout.addWidget(self.btn_line)
+
+        # Point Button
+        self.btn_point = QPushButton("📍") # Or •
+        self.btn_point.setToolTip("Punto")
+        self.btn_point.setStyleSheet(btn_style)
+        self.btn_point.clicked.connect(self.tool_point.emit)
+        layout.addWidget(self.btn_point)
+
+        # Move/Hand Button
+        self.btn_hand = QPushButton("✋")
+        self.btn_hand.setToolTip("Mover Objetos")
+        self.btn_hand.setStyleSheet(btn_style)
+        self.btn_hand.clicked.connect(self.tool_hand.emit)
+        layout.addWidget(self.btn_hand)
 
         # Eraser Button
         self.btn_eraser = QPushButton("🧹")
