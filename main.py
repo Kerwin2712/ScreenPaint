@@ -89,6 +89,11 @@ def main():
     toolbar.tool_pen.connect(overlay.set_tool_pen)
     toolbar.tool_eraser.connect(overlay.set_tool_eraser)
     toolbar.tool_clear.connect(overlay.clear_canvas)
+    
+    # Line Tools
+    toolbar.tool_line_segment.connect(overlay.set_tool_line_segment)
+    toolbar.tool_line_ray.connect(overlay.set_tool_line_ray)
+    toolbar.tool_line_infinite.connect(overlay.set_tool_line_infinite)
 
     # Ensure UI stays on top when interacting with overlay
     def raise_ui():

@@ -1,5 +1,7 @@
-from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
+from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout, QMenu
+from PyQt6.QtGui import QAction, QCursor
+
 
 class FloatingMenu(QWidget):
     clicked = pyqtSignal()
@@ -101,7 +103,12 @@ class Toolbar(QWidget):
     # New signals for tools
     tool_pen = pyqtSignal()
     tool_eraser = pyqtSignal()
+    tool_eraser = pyqtSignal()
     tool_clear = pyqtSignal()
+    # Signals for Line Tools
+    tool_line_segment = pyqtSignal()
+    tool_line_ray = pyqtSignal()
+    tool_line_infinite = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -173,7 +180,50 @@ class Toolbar(QWidget):
         self.btn_pen.setToolTip("Lápiz")
         self.btn_pen.setStyleSheet(btn_style)
         self.btn_pen.clicked.connect(self.tool_pen.emit)
+        self.btn_pen.clicked.connect(self.tool_pen.emit)
         layout.addWidget(self.btn_pen)
+
+        # Line Tool Button with Menu
+        self.btn_line = QPushButton("📏")
+        self.btn_line.setToolTip("Herramientas de Línea")
+        self.btn_line.setStyleSheet(btn_style)
+        
+        # Create Menu
+        self.line_menu = QMenu(self)
+        self.line_menu.setStyleSheet("""
+            QMenu {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                padding: 5px 10px;
+            }
+            QMenu::item:selected {
+                background-color: #444444;
+            }
+        """)
+        
+        # Add Actions
+        action_segment = QAction("Segmento", self)
+        action_segment.triggered.connect(self.tool_line_segment.emit)
+        self.line_menu.addAction(action_segment)
+        
+        action_ray = QAction("Semirecta", self)
+        action_ray.triggered.connect(self.tool_line_ray.emit)
+        self.line_menu.addAction(action_ray)
+        
+        action_infinite = QAction("Recta", self)
+        action_infinite.triggered.connect(self.tool_line_infinite.emit)
+        self.line_menu.addAction(action_infinite)
+        
+        # Set Menu via built-in setMenu logic (though we trigger it on hover)
+        self.btn_line.setMenu(self.line_menu)
+        
+        # Install Event Filter to handle Hover
+        self.btn_line.installEventFilter(self)
+        
+        layout.addWidget(self.btn_line)
 
         # Eraser Button
         self.btn_eraser = QPushButton("🧹")
@@ -213,6 +263,34 @@ class Toolbar(QWidget):
         self.layout().setDirection(direction)
         # Force re-layout/update
         self.layout().update()
+
+    def eventFilter(self, source, event):
+        if source == self.btn_line and event.type() == event.Type.Enter:
+            # Show menu on hover
+            # Determine direction based on screen position
+            # Use QTimer to debounce slightly to avoid accidental triggers or just show immediately
+            self.show_line_menu()
+            return True
+        return super().eventFilter(source, event)
+
+    def show_line_menu(self):
+        # Determine if we should show up or down based on screen geometry
+        # Get button global position
+        global_pos = self.btn_line.mapToGlobal(QPoint(0, 0))
+        screen = self.window().screen() or self.btn_line.screen()
+        screen_geo = screen.geometry()
+        
+        menu_height = self.line_menu.sizeHint().height()
+        
+        # Default to showing below
+        pos = global_pos + QPoint(0, self.btn_line.height())
+        
+        # Check if it fits below
+        if global_pos.y() + self.btn_line.height() + menu_height > screen_geo.bottom():
+            # Show above
+            pos = global_pos - QPoint(0, menu_height)
+            
+        self.line_menu.exec(pos)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
