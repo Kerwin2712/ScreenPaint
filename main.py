@@ -23,8 +23,28 @@ def main():
     # Logic Functions
     def show_tools():
         menu.hide()
-        # Position toolbar near where the menu was
-        toolbar.move(menu.pos())
+        
+        # Smart Positioning Logic
+        screen_geo = app.primaryScreen().geometry()
+        mid_point = screen_geo.width() / 2
+        menu_center = menu.geometry().center().x()
+        
+        # Ensure toolbar has correct size for interaction
+        toolbar.adjustSize() 
+        
+        if menu_center < mid_point:
+            # Left side of screen -> Expand Right -> LTR Layout
+            toolbar.set_layout_rtl(False)
+            toolbar.adjustSize() # Readjust after layout change
+            toolbar.move(menu.pos())
+        else:
+            # Right side of screen -> Expand Left -> RTL Layout
+            toolbar.set_layout_rtl(True)
+            toolbar.adjustSize() # Readjust after layout change
+            # Position so Top-Right matches Menu Top-Right
+            new_x = menu.x() + menu.width() - toolbar.width()
+            toolbar.move(new_x, menu.y())
+
         overlay.showFullScreen()
         toolbar.show()
         toolbar.raise_()

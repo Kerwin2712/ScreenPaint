@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel
+from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 
 class FloatingMenu(QWidget):
@@ -154,6 +154,13 @@ class Toolbar(QWidget):
         self.label_grip.setToolTip("Arrastrar para mover")
         layout.addWidget(self.label_grip)
 
+        # Hide Toolbar Button (Moved here)
+        self.btn_hide = QPushButton("⬇️")
+        self.btn_hide.setToolTip("Ocultar Barra")
+        self.btn_hide.setStyleSheet(btn_style)
+        self.btn_hide.clicked.connect(self.hide_toolbar.emit)
+        layout.addWidget(self.btn_hide)
+
         # Toggle Overlay Button
         self.btn_toggle = QPushButton("👁️")
         self.btn_toggle.setToolTip("Mostrar/Ocultar Overlay")
@@ -182,13 +189,6 @@ class Toolbar(QWidget):
         self.btn_clear.clicked.connect(self.tool_clear.emit)
         layout.addWidget(self.btn_clear)
 
-        # Hide Toolbar Button
-        self.btn_hide = QPushButton("⬇️")
-        self.btn_hide.setToolTip("Ocultar Barra")
-        self.btn_hide.setStyleSheet(btn_style)
-        self.btn_hide.clicked.connect(self.hide_toolbar.emit)
-        layout.addWidget(self.btn_hide)
-
         # Close App Button
         self.btn_close = QPushButton("❌")
         self.btn_close.setToolTip("Cerrar Programa")
@@ -207,6 +207,12 @@ class Toolbar(QWidget):
         """)
         self.btn_close.clicked.connect(self.close_app.emit)
         layout.addWidget(self.btn_close)
+
+    def set_layout_rtl(self, is_rtl):
+        direction = QBoxLayout.Direction.RightToLeft if is_rtl else QBoxLayout.Direction.LeftToRight
+        self.layout().setDirection(direction)
+        # Force re-layout/update
+        self.layout().update()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
