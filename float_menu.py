@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 
 class FloatingMenu(QWidget):
@@ -71,7 +71,13 @@ class Toolbar(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
+        # Dragging state
+        self.dragging = False
+        self.offset = QPoint()
+        
         layout = QHBoxLayout()
+        # Add some margin so there's space to grab if needed, or tight pack with handle
+        layout.setContentsMargins(5, 5, 5, 5)
         self.setLayout(layout)
         
         # Style for buttons
@@ -88,6 +94,24 @@ class Toolbar(QWidget):
                 background-color: #444444;
             }
         """
+
+        # Drag Handle (Grip)
+        self.label_grip = QLabel("✥")
+        self.label_grip.setStyleSheet("""
+            QLabel {
+                color: #aaaaaa;
+                font-size: 16px;
+                padding: 5px;
+                background-color: #222222;
+                border-radius: 5px;
+            }
+            QLabel:hover {
+                background-color: #333333;
+                color: white;
+            }
+        """)
+        self.label_grip.setToolTip("Arrastrar para mover")
+        layout.addWidget(self.label_grip)
 
         # Toggle Overlay Button
         self.btn_toggle = QPushButton("👁️")
@@ -142,3 +166,17 @@ class Toolbar(QWidget):
         """)
         self.btn_close.clicked.connect(self.close_app.emit)
         layout.addWidget(self.btn_close)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self.offset)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self.dragging = False
