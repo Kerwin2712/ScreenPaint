@@ -95,52 +95,153 @@ class ResizableRubberBand(QWidget):
         painter = QPainter(self)
         painter.setPen(QPen(self.border_color, self.border_width))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(0, 0, self.width(), self.height())
+        
+        # Calculate Frame Rect (Excluding controls at bottom)
+        ctrl_h = self.control_bar.height()
+        frame_h = self.height() - ctrl_h
+        
+        painter.drawRect(0, 0, self.width(), frame_h)
         
         # Resize handles visual
         painter.setBrush(self.border_color)
         handle_size = 10
+        
         # Bottom-Right
-        painter.drawRect(self.width()-handle_size, self.height()-handle_size, handle_size, handle_size)
+        painter.drawRect(self.width()-handle_size, frame_h-handle_size, handle_size, handle_size)
+        
+        # Top-Left
+        painter.drawRect(0, 0, handle_size, handle_size)
+
+        # Top-Right
+        painter.drawRect(self.width()-handle_size, 0, handle_size, handle_size)
+
+        # Bottom-Left
+        painter.drawRect(0, frame_h-handle_size, handle_size, handle_size)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
-            # Check resize handle (Bottom Right)
-            if (self.width() - pos.x() < 20) and (self.height() - pos.y() < 20):
+            
+            ctrl_h = self.control_bar.height()
+            frame_h = self.height() - ctrl_h
+            w = self.width()
+            
+            # Hit detection tolerance
+            t = 20 
+
+            # Bottom-Right
+            if (w - pos.x() < t) and (abs(frame_h - pos.y()) < t):
                 self.is_resizing = True
                 self.resize_edge = 'bottom_right'
                 self.drag_start_pos = pos
-            elif pos.y() < 30 and pos.x() < self.width() - 30: # Top drag area (simulated title bar) or just drag anywhere not control?
-                # Let's verify if clicking on controls
-                # The generic mouse press arrives here if not consumed by child widget?
-                # If clicking on control bar, it might be consumed.
-                # Let's allow dragging from top header area
+                
+            # Top-Left
+            elif (pos.x() < t) and (pos.y() < t):
+                self.is_resizing = True
+                self.resize_edge = 'top_left'
+                self.drag_start_global = event.globalPosition().toPoint()
+                self.drag_start_geo = self.geometry()
+            
+            # Top-Right
+            elif (w - pos.x() < t) and (pos.y() < t):
+                self.is_resizing = True
+                self.resize_edge = 'top_right'
+                self.drag_start_global = event.globalPosition().toPoint()
+                self.drag_start_geo = self.geometry()
+
+            # Bottom-Left
+            elif (pos.x() < t) and (abs(frame_h - pos.y()) < t):
+                self.is_resizing = True
+                self.resize_edge = 'bottom_left'
+                self.drag_start_global = event.globalPosition().toPoint()
+                self.drag_start_geo = self.geometry()
+                
+            # Top drag area (simulated title bar) - Top of Frame
+            elif pos.y() < 30 and pos.x() < w - 30: 
                 self.is_dragging = True
                 self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             
-            # Simple "drag anywhere empty"
-            elif not self.control_bar.geometry().contains(pos):
-                self.is_dragging = True
-                self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            # Drag anywhere empty in the frame
+            elif pos.y() < frame_h and not self.control_bar.geometry().contains(pos):
+                  self.is_dragging = True
+                  self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
+        ctrl_h = self.control_bar.height()
+        frame_h = self.height() - ctrl_h
+        w = self.width()
+        t = 20
         
         # Cursor update
-        if (self.width() - pos.x() < 20) and (self.height() - pos.y() < 20):
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        # TL-BR should be BDiag (\)
+        if ((w - pos.x() < t) and (abs(frame_h - pos.y()) < t)) or ((pos.x() < t) and (pos.y() < t)):
+            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        # TR-BL should be FDiag (/)
+        elif ((w - pos.x() < t) and (pos.y() < t)) or ((pos.x() < t) and (abs(frame_h - pos.y()) < t)):
+             self.setCursor(Qt.CursorShape.SizeFDiagCursor)
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
             
         if self.is_resizing:
-            delta = pos - self.drag_start_pos # This logic is tricky for resize
-            # simpler: set geometry based on global mouse pos
             global_pos = event.globalPosition().toPoint()
-            current_geo = self.geometry()
-            new_w = max(100, global_pos.x() - current_geo.x())
-            new_h = max(100, global_pos.y() - current_geo.y())
-            self.resize(new_w, new_h)
+            
+            # TL, TR, BL use global geometry calculation
+            # BR uses local resize logic (simplest for BR)
+            
+            orig_geo = getattr(self, 'drag_start_geo', self.geometry())
+            orig_tl = orig_geo.topLeft()
+            orig_br = orig_geo.bottomRight()
+            
+            if self.resize_edge == 'bottom_right':
+                tl = self.geometry().topLeft()
+                new_w = max(100, global_pos.x() - tl.x())
+                new_frame_h = max(50, global_pos.y() - tl.y())
+                self.resize(new_w, new_frame_h + ctrl_h)
+            
+            elif self.resize_edge == 'top_left':
+                new_x = min(global_pos.x(), orig_br.x() - 100)
+                new_y = min(global_pos.y(), orig_br.y() - 100)
+                new_w = orig_br.x() - new_x + 1
+                new_h = orig_br.y() - new_y + 1
+                self.setGeometry(new_x, new_y, new_w, new_h)
+
+            elif self.resize_edge == 'top_right':
+                # Anchor: Bottom-Left
+                orig_bl_x = orig_geo.x()
+                orig_bl_y = orig_geo.y() + orig_geo.height()
+                
+                # New Top (Y)
+                new_y = min(global_pos.y(), orig_bl_y - 100)
+                
+                # New Width (based on Mouse X - Left X)
+                # Global Mouse X is the new Right edge
+                # Left edge stays at orig_bl_x
+                new_w = max(100, global_pos.x() - orig_bl_x)
+                
+                # Height
+                new_h = orig_bl_y - new_y
+                
+                self.setGeometry(orig_bl_x, new_y, new_w, new_h)
+
+            elif self.resize_edge == 'bottom_left':
+                # Anchor: Top-Right
+                orig_tr_x = orig_geo.x() + orig_geo.width()
+                orig_tr_y = orig_geo.y()
+                
+                # New Left (X)
+                new_x = min(global_pos.x(), orig_tr_x - 100)
+                
+                # New Frame Height (Mouse Y - Top Y)
+                new_frame_h = max(50, global_pos.y() - orig_tr_y)
+                
+                # Window Height = Frame H + Ctrl H
+                new_h = new_frame_h + ctrl_h
+                
+                # Width
+                new_w = orig_tr_x - new_x
+                
+                self.setGeometry(new_x, orig_tr_y, new_w, new_h)
             
         elif self.is_dragging:
             self.move(event.globalPosition().toPoint() - self.drag_start_pos)
@@ -148,29 +249,24 @@ class ResizableRubberBand(QWidget):
     def mouseReleaseEvent(self, event):
         self.is_dragging = False
         self.is_resizing = False
+        self.resize_edge = None
 
     def get_capture_rect(self):
         # Calculate current capture rect (Inner area)
         geo = self.geometry()
         b = self.border_width
-        # Determine capture area. We ignore the control bar height for the capture?
-        # User wants to capture "the rectangle".
-        # Let's capture the area INSIDE the red border. 
-        # Control bar is overlaying, but if we resize window, control bar stays at bottom.
-        # Let's capture the full inner rect including control bar area if it overlaps content?
-        # No, control bar should probably be excluded if possible, or user accepts it.
-        # But wait, self.control_bar is a child widget. 
-        # The window is transparent.
-        # If we grabWindow of the *screen* coordinates, we get whatever is there.
-        # We should calculate the rect relative to screen.
+        
+        # Capture area is Window Height - Control Bar Height
+        ctrl_h = self.control_bar.height()
+        frame_h = self.height() - ctrl_h
         
         # Global position
         global_pos = self.mapToGlobal(QPoint(0, 0))
         x, y = global_pos.x(), global_pos.y()
-        w, h = self.width(), self.height()
+        w = self.width()
         
-        # Inner rect
-        return QRect(x + b, y + b, w - 2*b, h - 2*b)
+        # Inner rect (excluding border)
+        return QRect(x + b, y + b, w - 2*b, frame_h - 2*b)
 
     def start_recording(self):
         if not self.recorder:
@@ -217,7 +313,16 @@ class ResizableRubberBand(QWidget):
         # Similar rect logic
         geo = self.geometry()
         b = self.border_width
-        rect = QRect(geo.x() + b, geo.y() + b, geo.width() - 2*b, geo.height() - 2*b - self.control_bar.height())
+        
+        ctrl_h = self.control_bar.height()
+        frame_h = self.height() - ctrl_h
+        
+        # Capture rect relative to screen
+        global_pos = self.mapToGlobal(QPoint(0, 0))
+        x, y = global_pos.x(), global_pos.y()
+        w = self.width()
+        
+        rect = QRect(x + b, y + b, w - 2*b, frame_h - 2*b)
         
         # Hide self briefly to avoid capturing border?
         prev_opacity = self.windowOpacity()
