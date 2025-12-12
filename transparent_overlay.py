@@ -263,6 +263,10 @@ class TransparentOverlay(QWidget):
                 self.pointIdCounter += 1
                 self.objects.append(new_point)
                 self.update()
+            elif self.currentTool == 'eraser':
+                self.drawing = True
+                # Erase objects on click
+                self._erase_objects_at(pos)
             else:
                 self.drawing = True
 
@@ -277,12 +281,24 @@ class TransparentOverlay(QWidget):
                 self.lastDragPoint = pos
                 self.update()
                 
-            elif self.currentTool in ['pen', 'eraser']:
+            elif self.currentTool == 'pen':
                 self._draw_freehand(pos)
+
+            elif self.currentTool == 'eraser':
+                self._draw_freehand(pos)
+                self._erase_objects_at(pos)
                 
             elif self.currentTool in ['segment', 'ray', 'line']:
                 self.lastPoint = pos
                 self.update() # Update preview
+
+    def _erase_objects_at(self, pos):
+        # Remove any object that "contains" the position
+        # Using a list comprehension to filter efficiently
+        initial_count = len(self.objects)
+        self.objects = [obj for obj in self.objects if not obj.contains(pos)]
+        if len(self.objects) < initial_count:
+            self.update()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
