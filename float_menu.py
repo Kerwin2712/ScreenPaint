@@ -12,18 +12,21 @@ class FloatingMenu(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(50, 50)
+        self.setFixedWidth(50) # Fixed width, variable height
         
         # Position variables for dragging
         self.dragging = False
         self.offset = QPoint()
 
-        # Layout and Button
+        # Layout
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         self.setLayout(layout)
 
+        # Main Menu Button
         self.button = QPushButton("☰")
+        self.button.setFixedSize(50, 50)
         self.button.setStyleSheet("""
             QPushButton {
                 background-color: #333333;
@@ -39,11 +42,49 @@ class FloatingMenu(QWidget):
         self.button.clicked.connect(self.clicked.emit)
         layout.addWidget(self.button)
 
+        # Drag Handle (Hidden by default)
+        self.handle = QLabel("✥")
+        self.handle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.handle.setFixedSize(50, 20)
+        self.handle.setStyleSheet("""
+            QLabel {
+                background-color: #222222;
+                color: #aaaaaa;
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
+                font-size: 14px;
+            }
+            QLabel:hover {
+                background-color: #333333;
+                color: white;
+            }
+        """)
+        self.handle.hide()
+        layout.addWidget(self.handle)
+
+    def enterEvent(self, event):
+        self.handle.show()
+        self.adjustSize()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.handle.hide()
+        self.adjustSize()
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event):
+        # Only allow dragging if clicking on the handle area or if the handle is visible and below button?
+        # Simplest: If handle is visible, check if we clicked on it?
+        # Or just allow dragging the whole widget if we aren't clicking the button.
+        # But user asked to use the symbol to move it.
+        # Let's check if the press is within the handle's geometry relative to the widget.
+        
         if event.button() == Qt.MouseButton.LeftButton:
-            self.dragging = True
-            self.offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+            child = self.childAt(event.position().toPoint())
+            if child == self.handle:
+                self.dragging = True
+                self.offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.accept()
 
     def mouseMoveEvent(self, event):
         if self.dragging and event.buttons() & Qt.MouseButton.LeftButton:
