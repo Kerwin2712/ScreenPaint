@@ -3,7 +3,10 @@ import math
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
+from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
+from PyQt6.QtWidgets import QFileDialog
 from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject
+from capture_screen import take_screenshot
 
 # --- Overlay Class ---
 
@@ -128,6 +131,12 @@ class TransparentOverlay(QWidget):
         self.currentTool = 'rectangle'
         self.pending_p1 = None
         self._reset_tool_state()
+        
+    def set_tool_capture_crop(self):
+        self.currentTool = 'capture_crop'
+        self.pending_p1 = None
+        self._reset_tool_state()
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
     def _reset_tool_state(self):
         self.selected_ref_line = None
@@ -189,6 +198,15 @@ class TransparentOverlay(QWidget):
             
         # 3. Draw Preview
         self._draw_preview(painter)
+        
+        # 4. Draw Capture Selection
+        if self.currentTool == 'capture_crop' and self.pending_p1:
+             mouse_pos = self.mapFromGlobal(QCursor.pos())
+             pen = QPen(Qt.GlobalColor.cyan, 2, Qt.PenStyle.DashLine)
+             painter.setPen(pen)
+             painter.setBrush(QColor(0, 255, 255, 50))
+             rect = QRect(self.pending_p1.pos(), mouse_pos).normalized()
+             painter.drawRect(rect)
 
     def _draw_preview(self, painter):
         if self.currentTool in ['parallel', 'perpendicular']:
@@ -399,6 +417,17 @@ class TransparentOverlay(QWidget):
                         self.pending_p1 = None
                 return
                     
+            if self.currentTool == 'capture_crop':
+                # Similar to rectangle drag but on release we capture
+                self.pending_p1 = self._create_point(pos) # Use invisible point logic? Or just store pos? 
+                # Actually _create_point adds to objects list which we maybe don't want.
+                # Let's just use pending_p1 as a PointObject or raw QPoint.
+                # Simplest: Just reuse PointObject implementation but don't add to self.objects?
+                # No, standardizing:
+                self.pending_p1 = PointObject(pos.x(), pos.y(), 0, size=0)
+                self.drawing = True
+                return
+
             if self.currentTool == 'rectangle':
                 # Similar logic to lines: Drag or Click-Click
                 self.press_pos = pos

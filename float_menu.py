@@ -99,7 +99,13 @@ class Toolbar(QWidget):
     # Signals for Object Tools
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
+    tool_hand = pyqtSignal()
     tool_rectangle = pyqtSignal()
+    # Signals for Camera
+    tool_capture_full = pyqtSignal()
+    tool_capture_crop = pyqtSignal()
+    tool_record_full = pyqtSignal()
+    tool_record_crop = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -298,8 +304,42 @@ class Toolbar(QWidget):
         self.btn_rect.setMenu(self.rect_menu)
         layout.addWidget(self.btn_rect)
 
+        self.btn_rect.setMenu(self.rect_menu)
+        layout.addWidget(self.btn_rect)
+
         # Hook up hover
         self.btn_rect.installEventFilter(self)
+
+        # Camera Button
+        self.btn_cam = QPushButton("📷")
+        self.btn_cam.setToolTip("Cámara")
+        self.btn_cam.setStyleSheet(btn_style)
+        
+        self.cam_menu = QMenu(self)
+        self.cam_menu.setStyleSheet(self.rect_menu.styleSheet()) # Reuse style
+        
+        act_cap_full = QAction("Capturar Pantalla", self)
+        act_cap_full.triggered.connect(self.tool_capture_full.emit)
+        self.cam_menu.addAction(act_cap_full)
+        
+        act_cap_crop = QAction("Capturar Recorte", self)
+        act_cap_crop.triggered.connect(self.tool_capture_crop.emit)
+        self.cam_menu.addAction(act_cap_crop)
+        
+        self.cam_menu.addSeparator()
+        
+        act_rec_full = QAction("Grabar Pantalla", self)
+        act_rec_full.triggered.connect(self.tool_record_full.emit)
+        self.cam_menu.addAction(act_rec_full)
+        
+        act_rec_crop = QAction("Grabar Recorte", self)
+        act_rec_crop.triggered.connect(self.tool_record_crop.emit)
+        self.cam_menu.addAction(act_rec_crop)
+        
+        self.btn_cam.setMenu(self.cam_menu)
+        self.btn_cam.installEventFilter(self)
+        
+        layout.addWidget(self.btn_cam)
 
 
         # Hook up hover for Circle menu too
@@ -373,6 +413,9 @@ class Toolbar(QWidget):
                 return True
             elif source == self.btn_rect:
                 self.show_menu(self.btn_rect, self.rect_menu)
+                return True
+            elif source == self.btn_cam:
+                self.show_menu(self.btn_cam, self.cam_menu)
                 return True
         return super().eventFilter(source, event)
 

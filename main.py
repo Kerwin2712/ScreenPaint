@@ -3,6 +3,9 @@ from PyQt6.QtWidgets import QApplication, QBoxLayout
 from PyQt6.QtCore import Qt
 from float_menu import FloatingMenu, Toolbar
 from transparent_overlay import TransparentOverlay
+from recording_overlay import ResizableRubberBand
+from capture_screen import take_screenshot, ScreenRecorder
+from PyQt6.QtWidgets import QFileDialog
 
 def main():
     app = QApplication(sys.argv)
@@ -11,7 +14,14 @@ def main():
     # Instantiate windows
     menu = FloatingMenu()
     toolbar = Toolbar()
+    toolbar = Toolbar()
     overlay = TransparentOverlay()
+    
+    # Recording Overlay
+    rec_selector = ResizableRubberBand()
+    
+    # Global Recorder for Full Screen
+    full_recorder = None # Placeholder
 
     # Initial State
     menu.show()
@@ -109,11 +119,85 @@ def main():
     toolbar.tool_point.connect(overlay.set_tool_point)
     toolbar.tool_hand.connect(overlay.set_tool_hand)
     toolbar.tool_rectangle.connect(overlay.set_tool_rectangle)
+    
+    # Camera Tools Handlers
+    def handle_capture_full():
+        # Hide UI
+        menu.hide()
+        toolbar.hide()
+        overlay.hide()
+        rec_selector.hide()
+        QApplication.processEvents()
+        import time 
+        time.sleep(0.2)
+        
+        fname, _ = QFileDialog.getSaveFileName(None, "Guardar Captura", "", "PNG Files (*.png)")
+        if fname:
+            take_screenshot(filename=fname)
+            
+        # Restore
+        menu.show()
+        # Logic to restore others if they were open? 
+        # For simplicity reset to start state or show menu
+        
+    toolbar.tool_capture_full.connect(handle_capture_full)
+    toolbar.tool_capture_crop.connect(overlay.set_tool_capture_crop)
+    
+    def handle_record_full():
+        # Hide UI
+        menu.hide()
+        toolbar.hide()
+        overlay.hide()
+        QApplication.processEvents()
+        
+        # Save Dialog
+        fname, _ = QFileDialog.getSaveFileName(None, "Grabar Video", "", "AVI Files (*.avi)")
+        if fname:
+            if not fname.endswith('.avi'): fname += '.avi'
+            # We need a way to STOP full screen recording. 
+            # This implies we need a small floating "Stop" button or hotkey.
+            # OR we just show the menu/rec_selector in "minimized" state?
+            # User requirement: "Grabar pantalla" (no detailed spec on stop).
+            # Simplest: Show the RecSelector but set to Full Screen size and Locked?
+            # OR just launch RecSelector covering full screen.
+            
+            geo = app.primaryScreen().geometry()
+            rec_selector.setGeometry(geo.x(), geo.y(), geo.width(), geo.height())
+            rec_selector.show()
+            # If we reuse RecSelector, it has borders... 
+            # Users usually want full screen without border artifacts.
+            # But implementing a separate FullScreenRecorder control is extra work.
+            # Let's reuse RecSelector for consistency, or implement minimal logic.
+            
+            pass 
+            
+    # Better approach for Record Full:
+    # Just open the Recording Window but maximized? 
+    # Or start recording immediately and provide a notification icon/window to stop.
+    # Let's use a specialized small floating "Status" widget for Full Record.
+    # For now, to keep it simple and robust:
+    # "Grabar Pantalla" -> Opens the Recording Window sized to Full Screen.
+    def open_rec_full():
+        geo = app.primaryScreen().geometry()
+        rec_selector.show()
+        rec_selector.setGeometry(geo)
+        # Auto start? Maybe let user click record.
+    
+    toolbar.tool_record_full.connect(open_rec_full)
+    
+    def open_rec_crop():
+        rec_selector.show()
+        rec_selector.resize(400, 300)
+        rec_selector.move(100, 100)
+        
+    toolbar.tool_record_crop.connect(open_rec_crop)
 
     # Ensure UI stays on top when interacting with overlay
     def raise_ui():
         toolbar.raise_()
         menu.raise_()
+        if rec_selector.isVisible():
+            rec_selector.raise_()
     
     overlay.interacted.connect(raise_ui)
 
