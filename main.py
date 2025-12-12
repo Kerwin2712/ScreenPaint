@@ -25,22 +25,16 @@ def main():
         menu.hide()
         # Position toolbar near where the menu was
         toolbar.move(menu.pos())
-        toolbar.show()
         overlay.showFullScreen()
+        toolbar.show()
+        toolbar.raise_()
 
     def hide_tools():
         toolbar.hide()
         # Position menu where the toolbar was
         menu.move(toolbar.pos())
         menu.show()
-        # Optional: Hide overlay when minimizing toolbar? 
-        # User didn't specify, but usually "hiding toolbar" implies going back to "minimized" state.
-        # However, user might want to keep drawing without the toolbar obstructing.
-        # Let's keep overlay as is, or maybe hide it? 
-        # "otro para ocultar la barra de herramientas". 
-        # If I hide the toolbar, how do I bring it back? The menu comes back.
-        # If the menu comes back, clicking it shows the toolbar AND overlay.
-        # So if I hide toolbar -> show menu.
+        menu.raise_()
         
 
     def toggle_overlay_visibility():
@@ -48,6 +42,7 @@ def main():
             overlay.hide()
         else:
             overlay.showFullScreen()
+            toolbar.raise_()
 
     def close_start():
         app.quit()
