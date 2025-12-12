@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer, QEvent
 from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout, QMenu
 from PyQt6.QtGui import QAction, QCursor
 
@@ -14,11 +14,12 @@ class FloatingMenu(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedWidth(50) # Fixed width, variable height
+        self.setFixedSize(50, 50) # Fixed size now since no handle
         
         # Position variables for dragging
         self.dragging = False
-        self.offset = QPoint()
+        self.drag_start_pos = QPoint()
+        self.window_start_pos = QPoint()
 
         # Layout
         layout = QVBoxLayout()
@@ -42,59 +43,37 @@ class FloatingMenu(QWidget):
             }
         """)
         self.button.clicked.connect(self.clicked.emit)
+        # Install event filter to handle dragging
+        self.button.installEventFilter(self)
         layout.addWidget(self.button)
 
-        # Drag Handle (Hidden by default)
-        self.handle = QLabel("✥")
-        self.handle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.handle.setFixedSize(50, 20)
-        self.handle.setStyleSheet("""
-            QLabel {
-                background-color: #222222;
-                color: #aaaaaa;
-                border-bottom-left-radius: 10px;
-                border-bottom-right-radius: 10px;
-                font-size: 14px;
-            }
-            QLabel:hover {
-                background-color: #333333;
-                color: white;
-            }
-        """)
-        self.handle.hide()
-        layout.addWidget(self.handle)
-
-    def enterEvent(self, event):
-        self.handle.show()
-        self.adjustSize()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.handle.hide()
-        self.adjustSize()
-        super().leaveEvent(event)
-
-    def mousePressEvent(self, event):
-        # Only allow dragging if clicking on the handle area or if the handle is visible and below button?
-        # Simplest: If handle is visible, check if we clicked on it?
-        # Or just allow dragging the whole widget if we aren't clicking the button.
-        # But user asked to use the symbol to move it.
-        # Let's check if the press is within the handle's geometry relative to the widget.
-        
-        if event.button() == Qt.MouseButton.LeftButton:
-            child = self.childAt(event.position().toPoint())
-            if child == self.handle:
-                self.dragging = True
-                self.offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                event.accept()
-
-    def mouseMoveEvent(self, event):
-        if self.dragging and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.offset)
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        self.dragging = False
+    def eventFilter(self, source, event):
+        if source == self.button:
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self.dragging = False # Reset
+                    self.drag_start_pos = event.globalPosition().toPoint()
+                    self.window_start_pos = self.frameGeometry().topLeft()
+                    # Do NOT absorb event, let button receive Press for visual feedback
+            
+            elif event.type() == QEvent.Type.MouseMove:
+                if event.buttons() & Qt.MouseButton.LeftButton:
+                    current_pos = event.globalPosition().toPoint()
+                    if not self.dragging:
+                        if (current_pos - self.drag_start_pos).manhattanLength() > 5:
+                            self.dragging = True
+                    
+                    if self.dragging:
+                        delta = current_pos - self.drag_start_pos
+                        self.move(self.window_start_pos + delta)
+                        return True # Consume event so button ignores it (no click on release)
+            
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if self.dragging:
+                    self.dragging = False
+                    return True # Consume release, prevent Click
+                    
+        return super().eventFilter(source, event)
 
 class Toolbar(QWidget):
     toggle_overlay = pyqtSignal()
@@ -169,7 +148,7 @@ class Toolbar(QWidget):
         layout.addWidget(self.label_grip)
 
         # Hide Toolbar Button (Moved here)
-        self.btn_hide = QPushButton("⬇️")
+        self.btn_hide = QPushButton("-")
         self.btn_hide.setToolTip("Ocultar Barra")
         self.btn_hide.setStyleSheet(btn_style)
         self.btn_hide.clicked.connect(self.hide_toolbar.emit)
