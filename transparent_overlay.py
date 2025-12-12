@@ -66,8 +66,17 @@ class LineObject(DrawingObject):
             
     def _calculate_geometry(self, rect):
         p1 = self.p1_obj.pos()
-        p2 = self.p2_obj.pos()
+        p2 = self.p2_obj.pos() # Used for direction or just as a second point reference
         x1, y1 = p1.x(), p1.y()
+        
+        # Override logic for forced horizontal/vertical
+        if self.type == 'hline':
+            # Horizontal Line: y is constant (y1), x goes from 0 to w
+            return QPoint(0, y1), QPoint(rect.width(), y1)
+        elif self.type == 'vline':
+            # Vertical Line: x is constant (x1), y goes from 0 to h
+            return QPoint(x1, 0), QPoint(x1, rect.height())
+            
         x2, y2 = p2.x(), p2.y()
         dx = x2 - x1
         dy = y2 - y1
@@ -110,13 +119,19 @@ class LineObject(DrawingObject):
         
     def contains(self, point):
         p1 = self.p1_obj.pos()
-        p2 = self.p2_obj.pos()
         threshold = 10
-        
         x0, y0 = point.x(), point.y()
         x1, y1 = p1.x(), p1.y()
+
+        if self.type == 'hline':
+            # Distance to horizontal line y = y1
+            return abs(y0 - y1) <= threshold
+        elif self.type == 'vline':
+             # Distance to vertical line x = x1
+            return abs(x0 - x1) <= threshold
+
+        p2 = self.p2_obj.pos()
         x2, y2 = p2.x(), p2.y()
-        
         dx = x2 - x1
         dy = y2 - y1
         
@@ -143,8 +158,15 @@ class LineObject(DrawingObject):
     def move(self, dx, dy):
         # When moving the line, we move the associated points
         self.p1_obj.move(dx, dy)
-        self.p2_obj.move(dx, dy)
-
+        if self.type not in ['hline', 'vline']:
+             self.p2_obj.move(dx, dy)
+        # For H/V lines, do we move both points? 
+        # Yes, moving the line implies translating it. Moving p1 is key.
+        # But if we move HLine, p2 might be irrelevant or we just move visible line.
+        # Actually hline/vline only depends on p1, p2 is just a placeholder or could be used for rotation later? 
+        # For now, p1 defines the position (x1 for vline, y1 for hline).
+        # So moving p1 is enough to move the infinite line. 
+        # But to be consistent with "contains" and other logic, let's move both if present.
 
 # --- Overlay Class ---
 
@@ -204,11 +226,21 @@ class TransparentOverlay(QWidget):
         painter.drawPixmap(0, 0, self.image)
         
         # 2. Draw Objects
+        # Draw Lines first so Points appear on top
         rect = self.rect()
+        
+        # Filter and draw Lines
         for obj in self.objects:
-            obj.draw(painter, rect if isinstance(obj, LineObject) else None)
+            if isinstance(obj, LineObject):
+                obj.draw(painter, rect)
+
+        # Filter and draw Points
+        for obj in self.objects:
+            if isinstance(obj, PointObject):
+                # Pass rect just in case, though ignored
+                obj.draw(painter, rect)
             
-        # 3. Draw Preview (only if we have a P1 and are waiting for P2)
+        # 3. Draw Preview
         if self.pending_p1:
              # Create a temp line using pending P1 and current mouse pos
              # Use cursor pos from mapFromGlobal or last tracked pos
@@ -233,13 +265,26 @@ class TransparentOverlay(QWidget):
             self.startPoint = pos # Freehand uses this
             
             if self.currentTool == 'hand':
-                # Hit detection
+                # Hit detection: Prioritize Points over Lines
+                hit_obj = None
+                
+                # Check Points first (Top-most first if multiple)
                 for obj in reversed(self.objects):
-                    if obj.contains(pos):
-                        self.draggingObject = obj
-                        self.lastDragPoint = pos
-                        self.drawing = True
+                    if isinstance(obj, PointObject) and obj.contains(pos):
+                        hit_obj = obj
                         break
+                
+                # If no Point hit, check Lines
+                if not hit_obj:
+                    for obj in reversed(self.objects):
+                        if isinstance(obj, LineObject) and obj.contains(pos):
+                            hit_obj = obj
+                            break
+                            
+                if hit_obj:
+                    self.draggingObject = hit_obj
+                    self.lastDragPoint = pos
+                    self.drawing = True
                         
             elif self.currentTool == 'point':
                 self._create_point(pos)
@@ -248,18 +293,33 @@ class TransparentOverlay(QWidget):
                 self.drawing = True
                 self._erase_objects_at(pos)
                 
-            elif self.currentTool in ['segment', 'ray', 'line']:
+            elif self.currentTool in ['segment', 'ray', 'line', 'hline', 'vline']:
                 # Dual Mode Logic
-                self.press_pos = pos
-                if not self.pending_p1:
-                    # First Click/Press: Create P1
-                    self.pending_p1 = self._create_point(pos)
+                # For hline/vline, ideally we just need ONE click (the point it passes through).
+                # But to maintain consistency, let's stick to the P1 establishment.
+                # Actually, for horizontal/vertical, user clicks a point and that's it?
+                # User request: "pasen por un punto". Just 1 point is needed.
+                
+                if self.currentTool in ['hline', 'vline']:
+                    # Single click creation for H/V lines? Or create a point?
+                    # Let's create P1 at click, and immediately create the line.
+                    p1 = self._create_point(pos)
+                    # For consistency with LineObject structure requiring 2 points (though 2nd unused for logic):
+                    self._create_line_object(p1, p1) # Same point or dummy
+                    self.pending_p1 = None # Should not be pending
+                    
                 else:
-                    # Second Click (if doing 2-click method and we are here)
-                    # Create P2 and connect
-                    p2 = self._create_point(pos)
-                    self._create_line_object(self.pending_p1, p2)
-                    self.pending_p1 = None
+                    # Normal 2-point lines
+                    self.press_pos = pos
+                    if not self.pending_p1:
+                        # First Click/Press: Create P1
+                        self.pending_p1 = self._create_point(pos)
+                    else:
+                        # Second Click (if doing 2-click method and we are here)
+                        # Create P2 and connect
+                        p2 = self._create_point(pos)
+                        self._create_line_object(self.pending_p1, p2)
+                        self.pending_p1 = None
                     
             elif self.currentTool == 'pen':
                 self.drawing = True
@@ -380,6 +440,14 @@ class TransparentOverlay(QWidget):
         
     def set_tool_line_infinite(self): 
         self.currentTool = 'line'
+        self.pending_p1 = None
+        
+    def set_tool_line_horizontal(self):
+        self.currentTool = 'hline'
+        self.pending_p1 = None
+
+    def set_tool_line_vertical(self):
+        self.currentTool = 'vline'
         self.pending_p1 = None
         
     def set_tool_point(self): 

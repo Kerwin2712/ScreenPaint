@@ -109,6 +109,8 @@ class Toolbar(QWidget):
     tool_line_segment = pyqtSignal()
     tool_line_ray = pyqtSignal()
     tool_line_infinite = pyqtSignal()
+    tool_line_horizontal = pyqtSignal()
+    tool_line_vertical = pyqtSignal()
     # Signals for Object Tools
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
@@ -220,6 +222,14 @@ class Toolbar(QWidget):
         action_infinite.triggered.connect(self.tool_line_infinite.emit)
         self.line_menu.addAction(action_infinite)
         
+        action_horizontal = QAction("Recta Horizontal", self)
+        action_horizontal.triggered.connect(self.tool_line_horizontal.emit)
+        self.line_menu.addAction(action_horizontal)
+        
+        action_vertical = QAction("Recta Vertical", self)
+        action_vertical.triggered.connect(self.tool_line_vertical.emit)
+        self.line_menu.addAction(action_vertical)
+
         # Set Menu via built-in setMenu logic (though we trigger it on hover)
         self.btn_line.setMenu(self.line_menu)
         

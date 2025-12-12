@@ -94,6 +94,8 @@ def main():
     toolbar.tool_line_segment.connect(overlay.set_tool_line_segment)
     toolbar.tool_line_ray.connect(overlay.set_tool_line_ray)
     toolbar.tool_line_infinite.connect(overlay.set_tool_line_infinite)
+    toolbar.tool_line_horizontal.connect(overlay.set_tool_line_horizontal)
+    toolbar.tool_line_vertical.connect(overlay.set_tool_line_vertical)
 
     # Object Tools
     toolbar.tool_point.connect(overlay.set_tool_point)
