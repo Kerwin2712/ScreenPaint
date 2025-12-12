@@ -121,8 +121,8 @@ class ResizableRubberBand(QWidget):
             
             # Simple "drag anywhere empty"
             elif not self.control_bar.geometry().contains(pos):
-                 self.is_dragging = True
-                 self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                self.is_dragging = True
+                self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
@@ -149,33 +149,37 @@ class ResizableRubberBand(QWidget):
         self.is_dragging = False
         self.is_resizing = False
 
-    def start_recording(self):
-        # Define rect. 
-        # CAUTION: We record the area *under* this window.
-        # But this window has a border and a control bar.
-        # We probably want to hide the control bar during frame grab? 
-        # Or just accept it's there. 
-        # Ideally, we record the geometric rect area.
-        # ScreenRecorder grabs from screen implementation. It captures Top-Most too if checking windowId 0.
-        # So it WILL capture this red border overlay.
-        # If user wants clean recording of content, we might want to hide border or assume it's like a "viewfinder" that stays.
-        # Usually viewfinders stay.
-        
-        # Rect Calculation
-        # We exclude border width?
+    def get_capture_rect(self):
+        # Calculate current capture rect (Inner area)
         geo = self.geometry()
-        # Adjust for border
         b = self.border_width
-        rect = QRect(geo.x() + b, geo.y() + b, geo.width() - 2*b, geo.height() - 2*b - self.control_bar.height())
-        # Actually control bar takes space. 
-        # If the user frames the content, they frame it *within* the border.
+        # Determine capture area. We ignore the control bar height for the capture?
+        # User wants to capture "the rectangle".
+        # Let's capture the area INSIDE the red border. 
+        # Control bar is overlaying, but if we resize window, control bar stays at bottom.
+        # Let's capture the full inner rect including control bar area if it overlaps content?
+        # No, control bar should probably be excluded if possible, or user accepts it.
+        # But wait, self.control_bar is a child widget. 
+        # The window is transparent.
+        # If we grabWindow of the *screen* coordinates, we get whatever is there.
+        # We should calculate the rect relative to screen.
         
+        # Global position
+        global_pos = self.mapToGlobal(QPoint(0, 0))
+        x, y = global_pos.x(), global_pos.y()
+        w, h = self.width(), self.height()
+        
+        # Inner rect
+        return QRect(x + b, y + b, w - 2*b, h - 2*b)
+
+    def start_recording(self):
         if not self.recorder:
             fname, _ = QFileDialog.getSaveFileName(self, "Guardar Video", "", "AVI Files (*.avi)")
             if not fname: return
             if not fname.endswith('.avi'): fname += '.avi'
             
-            self.recorder = ScreenRecorder(rect=rect, output_filename=fname)
+            # Use Dynamic Geometry Source
+            self.recorder = ScreenRecorder(geometry_source=self.get_capture_rect, output_filename=fname)
             self.recorder.recording_stopped.connect(self.on_recording_finished)
             self.recorder.start()
             
@@ -193,6 +197,13 @@ class ResizableRubberBand(QWidget):
     def toggle_pause(self):
         if self.recorder:
             self.recorder.pause()
+            self.is_paused = not self.is_paused
+            
+            if self.is_paused:
+                self.border_color = QColor(255, 255, 0) # Yellow
+            else:
+                self.border_color = QColor(0, 255, 0) # Green
+            self.update()
             
     def on_recording_finished(self):
         self.recorder = None

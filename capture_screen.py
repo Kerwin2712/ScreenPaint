@@ -35,9 +35,10 @@ class ScreenRecorder(QThread):
     recording_stopped = pyqtSignal()
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, rect=None, output_filename=None):
+    def __init__(self, rect=None, geometry_source=None, output_filename=None):
         super().__init__()
-        self.rect = rect # QRect or None for fullscreen
+        self.rect = rect # Initial QRect (Static)
+        self.geometry_source = geometry_source # Callable returning QRect (Dynamic)
         self.output_filename = output_filename
         self.is_recording = False
         self.is_paused = False
@@ -49,14 +50,18 @@ class ScreenRecorder(QThread):
             self.error_occurred.emit("No primary screen found")
             return
 
-        # Determine geometry
+        # Determine Initial Geometry and Fixed Output Size
         if self.rect:
-            x, y, w, h = self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height()
+            current_geom = self.rect
+        elif self.geometry_source:
+            current_geom = self.geometry_source()
         else:
-            geom = screen.geometry()
-            x, y, w, h = geom.x(), geom.y(), geom.width(), geom.height()
-
-        # Ensure even dimensions for video codec usually preferred, but not strictly required
+            current_geom = screen.geometry() # Fullscreen
+            
+        x, y, w, h = current_geom.x(), current_geom.y(), current_geom.width(), current_geom.height()
+        
+        # Output Size is FIXED based on start settings
+        out_w, out_h = w, h
         
         if not self.output_filename:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -64,7 +69,7 @@ class ScreenRecorder(QThread):
 
         # Codec
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        out = cv2.VideoWriter(self.output_filename, fourcc, self._fps, (w, h))
+        out = cv2.VideoWriter(self.output_filename, fourcc, self._fps, (out_w, out_h))
 
         self.is_recording = True
         self.recording_started.emit()
@@ -77,50 +82,38 @@ class ScreenRecorder(QThread):
                 
                 start_time = time.time()
                 
+                # Get Current Geometry if dynamic
+                if self.geometry_source:
+                    current_geom = self.geometry_source()
+                    x, y, w, h = current_geom.x(), current_geom.y(), current_geom.width(), current_geom.height()
+                
                 # Grab Frame
                 # grabbing from window ID 0 (Desktop)
                 pixmap = screen.grabWindow(0, x, y, w, h)
                 image = pixmap.toImage()
                 
                 # Convert QImage to Numpy Array
-                # QImage Format is usually ARGB32 or RGB32. 
                 image = image.convertToFormat(QImage.Format.Format_RGB32)
                 
                 width = image.width()
                 height = image.height()
                 
                 ptr = image.bits()
-                # Reshape. Note: QImage.bits() returns a void pointer, we need to set size in bytes
-                # For RGB32, it's 4 bytes per pixel.
-                
-                # Handling raw data robustly:
                 ptr.setsize(height * width * 4)
                 arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
                 
-                # Convert RGBA/BGRA to BGR for OpenCV
-                # QImage is usually B G R A (little endian) -> BGR
-                # But actually it depends. Format_RGB32 is 0xffRRGGBB.
-                # Let's verify color channels.
-                # OpenCV uses BGR.
-                # Usually we just take the first 3 channels and flip if needed.
+                frame = arr[:, :, :3] # BGR (or RGB depending on system)
+                # Convert to BGR if needed (Usually needed for RGB32)
+                # Ideally check channel order but standard is usually needing conversion
+                # Let's assume standard BGR for now as per previous logic.
                 
-                frame = arr[:, :, :3] # Drop Alpha
-                # If colors are swapped (blue face), we might need cvtColor
-                # PyQt image is often BGRA on Windows. OpenCV wants BGR.
-                # So taking [:3] gives BGR directly? Or RGB?
-                # Usually RGB32 means B is at lowest byte address? 
-                # Let's assume standard handling -> BGR is needed. 
-                # It's safer to test, but I will assume it matches or might need cv2.COLOR_RGB2BGR or RGBA2BGR
-                
-                # Usually QImage ARGB32 -> B is 0, G is 1, R is 2. (Little Endian)
-                # OpenCV wants BGR: B at 0, G at 1, R at 2.
-                # So straight slicing might work.
-                # If not, we use cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-                
-                # Actually, simpler:
-                # frame = cv2.cvtColor(arr, cv2.COLOR_BGRA2BGR) 
-                
+                # Resize if dimensions changed (Zoom Effect)
+                if width != out_w or height != out_h:
+                    frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+                    
                 out.write(frame)
+                
+                # FPS Control
                 
                 # FPS Control
                 elapsed = time.time() - start_time
