@@ -252,11 +252,35 @@ class TransparentOverlay(QWidget):
             # Circle Tools
             if self.currentTool == 'circle_radius':
                 center = self._create_point(pos)
-                radius, ok = QInputDialog.getDouble(self, "Radio", "Ingrese el radio:", 50, 1, 1000, 1)
-                if ok:
+                
+                # Use None as parent to be independent window
+                # Ensure it is top-most
+                dialog = QInputDialog() # No parent
+                dialog.setWindowTitle("Radio")
+                dialog.setLabelText("Ingrese el radio:")
+                dialog.setDoubleValue(50)
+                dialog.setDoubleMinimum(1)
+                dialog.setDoubleMaximum(1000)
+                dialog.setDoubleDecimals(1)
+                # Force strictly on top
+                dialog.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+                # Re-add frame hint if we want title bar, but maybe Frameless is safer if we want to ensure it pops over? 
+                # Actually, standard Dialog title bar is fine.
+                dialog.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Dialog)
+                
+                dialog.resize(300, 150)
+                # Move to mouse pos?
+                from PyQt6.QtGui import QCursor
+                dialog.move(QCursor.pos())
+
+                if dialog.exec():
+                    radius = dialog.doubleValue()
                     circle = CircleObject(center, radius, 'radius_num')
                     self.objects.append(circle)
                     self.update()
+                
+                # Bring UI back to top after dialog closes
+                self.interacted.emit()
                 return
 
             if self.currentTool == 'circle_center_point':

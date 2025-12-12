@@ -6,6 +6,7 @@ from transparent_overlay import TransparentOverlay
 
 def main():
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     # Instantiate windows
     menu = FloatingMenu()
