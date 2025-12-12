@@ -1,9 +1,12 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QAction
 
 class TransparentOverlay(QWidget):
+    # Signal to notify main app to raise UI elements
+    interacted = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         
@@ -14,6 +17,7 @@ class TransparentOverlay(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         
         # Drawing State
         self.image = QPixmap()
@@ -52,11 +56,21 @@ class TransparentOverlay(QWidget):
         painter.drawPixmap(0, 0, self.image)
 
     def mousePressEvent(self, event):
+        # Notify main to raise UI
+        self.interacted.emit()
         if event.button() == Qt.MouseButton.LeftButton:
             self.drawing = True
             self.lastPoint = event.position().toPoint()
 
     def mouseMoveEvent(self, event):
+        # Notify main to raise UI (frequency might be high, but ensures safety)
+        # self.interacted.emit() 
+        # Actually, let's emit only on press to avoid lag, or maybe on move if dragging into menu?
+        # If I drag into menu, I want to be able to release.
+        # But raising is cheap enough usually.
+        # Let's keep it on Press for now. If user moves mouse over menu without pressing, overlay still has focus?
+        # WA_ShowWithoutActivating should help.
+        
         if (event.buttons() & Qt.MouseButton.LeftButton) and self.drawing:
             painter = QPainter(self.image)
             

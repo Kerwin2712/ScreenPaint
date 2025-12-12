@@ -59,6 +59,13 @@ def main():
     toolbar.tool_eraser.connect(overlay.set_tool_eraser)
     toolbar.tool_clear.connect(overlay.clear_canvas)
 
+    # Ensure UI stays on top when interacting with overlay
+    def raise_ui():
+        toolbar.raise_()
+        menu.raise_()
+    
+    overlay.interacted.connect(raise_ui)
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
