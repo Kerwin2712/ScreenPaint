@@ -111,6 +111,8 @@ class Toolbar(QWidget):
     tool_line_infinite = pyqtSignal()
     tool_line_horizontal = pyqtSignal()
     tool_line_vertical = pyqtSignal()
+    tool_line_parallel = pyqtSignal()
+    tool_line_perpendicular = pyqtSignal()
     # Signals for Object Tools
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
@@ -229,6 +231,17 @@ class Toolbar(QWidget):
         action_vertical = QAction("Recta Vertical", self)
         action_vertical.triggered.connect(self.tool_line_vertical.emit)
         self.line_menu.addAction(action_vertical)
+        
+        # Tools requiring a reference line
+        self.line_menu.addSeparator()
+        
+        action_parallel = QAction("Paralela", self)
+        action_parallel.triggered.connect(self.tool_line_parallel.emit)
+        self.line_menu.addAction(action_parallel)
+        
+        action_perpendicular = QAction("Perpendicular", self)
+        action_perpendicular.triggered.connect(self.tool_line_perpendicular.emit)
+        self.line_menu.addAction(action_perpendicular)
 
         # Set Menu via built-in setMenu logic (though we trigger it on hover)
         self.btn_line.setMenu(self.line_menu)

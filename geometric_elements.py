@@ -1,5 +1,6 @@
 import math
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, QRect
+from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 
 # --- Shape Classes ---
 
@@ -46,10 +47,11 @@ class PointObject(DrawingObject):
         return QPoint(self.x, self.y)
 
 class LineObject(DrawingObject):
-    def __init__(self, point_obj_1, point_obj_2, line_type, color=Qt.GlobalColor.blue, width=3):
+    def __init__(self, point_obj_1, point_obj_2, line_type, color=Qt.GlobalColor.blue, width=3, reference_line=None):
         self.p1_obj = point_obj_1 # PointObject
-        self.p2_obj = point_obj_2 # PointObject
-        self.type = line_type # 'segment', 'ray', 'line'
+        self.p2_obj = point_obj_2 # PointObject (Can be None/Ignored for H/V/P/Perp)
+        self.type = line_type # 'segment', 'ray', 'line', 'hline', 'vline', 'parallel', 'perpendicular'
+        self.reference_line = reference_line # LineObject
         self.color = color
         self.width = width
         
@@ -63,17 +65,93 @@ class LineObject(DrawingObject):
             
     def _calculate_geometry(self, rect):
         p1 = self.p1_obj.pos()
-        p2 = self.p2_obj.pos() # Used for direction or just as a second point reference
         x1, y1 = p1.x(), p1.y()
-        
-        # Override logic for forced horizontal/vertical
-        if self.type == 'hline':
-            # Horizontal Line: y is constant (y1), x goes from 0 to w
-            return QPoint(0, y1), QPoint(rect.width(), y1)
-        elif self.type == 'vline':
-            # Vertical Line: x is constant (x1), y goes from 0 to h
-            return QPoint(x1, 0), QPoint(x1, rect.height())
+        w = rect.width()
+        h = rect.height()
+
+        # Helper to get intersections for infinite lines defined by point (x,y) and slope (dx,dy)
+        def get_screen_intersections(x, y, dx, dy):
+            points = []
+            if dx == 0 and dy == 0: return []
             
+            # Intersect with Left (x=0)
+            if dx != 0:
+                y_at_0 = y + dy * (0 - x) / dx
+                if 0 <= y_at_0 <= h: points.append(QPoint(0, int(y_at_0)))
+            
+            # Intersect with Right (x=w)
+            if dx != 0:
+                y_at_w = y + dy * (w - x) / dx
+                if 0 <= y_at_w <= h: points.append(QPoint(w, int(y_at_w)))
+            
+            # Intersect with Top (y=0)
+            if dy != 0:
+                x_at_0 = x + dx * (0 - y) / dy
+                if 0 <= x_at_0 <= w: points.append(QPoint(int(x_at_0), 0))
+            
+            # Intersect with Bottom (y=h)
+            if dy != 0:
+                x_at_h = x + dx * (h - y) / dy
+                if 0 <= x_at_h <= w: points.append(QPoint(int(x_at_h), h))
+            
+            # Sort by x then y, return unique
+            points = sorted(list(set([(p.x(), p.y()) for p in points])))
+            return [QPoint(*p) for p in points]
+
+
+        if self.type == 'hline':
+            return QPoint(0, y1), QPoint(w, y1)
+        elif self.type == 'vline':
+            return QPoint(x1, 0), QPoint(x1, h)
+            
+        elif self.type in ['parallel', 'perpendicular'] and self.reference_line:
+            # Parallel: Slope is same as reference line
+            # Perpendicular: Slope is -1/m
+            
+            # Get Ref Slope
+            ref_p1 = self.reference_line.p1_obj.pos()
+            ref_p2 = self.reference_line.p2_obj.pos()
+            
+            # Special check if reference is hline/vline
+            if self.reference_line.type == 'hline':
+                ref_dx, ref_dy = 1, 0 # Horizontal
+            elif self.reference_line.type == 'vline':
+                ref_dx, ref_dy = 0, 1 # Vertical
+            elif self.reference_line.type in ['parallel', 'perpendicular']:
+                # Recursive logic? For simplicity, calculate its vector effectively
+                # This could be complex. Let's assume ref is basic or handled by visual recursive calls?
+                # Actually, simply getting p1 and p2 of the ref line object is risky if
+                # the ref line is also infinite/parallel.
+                # Better: calculate ref geometry first?
+                # Simplified: Assume ref is defined by its p1/p2 objects which ALWAYS exist
+                # ...Wait, for hline/vline, p2 might be dummy.
+                # Let's enforce Ref Line has slope defined by its geometric calculation logic?
+                # No, let's look at its type.
+                 
+                 # Simpler fallback: Calculate geometry of ref line.
+                 ref_start, ref_end = self.reference_line._calculate_geometry(rect)
+                 ref_dx = ref_end.x() - ref_start.x()
+                 ref_dy = ref_end.y() - ref_start.y()
+            else:    
+                ref_dx = ref_p2.x() - ref_p1.x()
+                ref_dy = ref_p2.y() - ref_p1.y()
+                
+            dx, dy = 0, 0
+            if self.type == 'parallel':
+                dx, dy = ref_dx, ref_dy
+            else: # perpendicular
+                dx, dy = -ref_dy, ref_dx
+                
+            intersections = get_screen_intersections(x1, y1, dx, dy)
+            if len(intersections) >= 2:
+                # Return start and end (sorted in helper)
+                return intersections[0], intersections[-1]
+            else:
+                 # Fallback if exactly on edge or erratic
+                 return QPoint(x1, y1), QPoint(x1+dx, y1+dy)
+        
+        # Standard Line Logic
+        p2 = self.p2_obj.pos() 
         x2, y2 = p2.x(), p2.y()
         dx = x2 - x1
         dy = y2 - y1
@@ -81,36 +159,38 @@ class LineObject(DrawingObject):
         if dx == 0 and dy == 0:
             return p1, p2
 
-        w = rect.width()
-        h = rect.height()
-        
-        def get_intersections(x, y, dx, dy, forward_only=False):
+        def get_intersections_standard(x, y, dx, dy, forward_only=False):
+            # Same as above but with direction check
             points = []
             if dx != 0:
                 y_at_0 = y + dy * (0 - x) / dx
-                if 0 <= y_at_0 <= h and (not forward_only or (0 - x) * dx >= 0): points.append(QPoint(0, int(y_at_0)))
+                if 0 <= y_at_0 <= h:
+                    if not forward_only or (0 - x) * dx >= 0: points.append(QPoint(0, int(y_at_0)))
                 y_at_w = y + dy * (w - x) / dx
-                if 0 <= y_at_w <= h and (not forward_only or (w - x) * dx >= 0): points.append(QPoint(w, int(y_at_w)))
+                if 0 <= y_at_w <= h:
+                    if not forward_only or (w - x) * dx >= 0: points.append(QPoint(w, int(y_at_w)))
             if dy != 0:
                 x_at_0 = x + dx * (0 - y) / dy
-                if 0 <= x_at_0 <= w and (not forward_only or (0 - y) * dy >= 0): points.append(QPoint(int(x_at_0), 0))
+                if 0 <= x_at_0 <= w:
+                    if not forward_only or (0 - y) * dy >= 0: points.append(QPoint(int(x_at_0), 0))
                 x_at_h = x + dx * (h - y) / dy
-                if 0 <= x_at_h <= w and (not forward_only or (h - y) * dy >= 0): points.append(QPoint(int(x_at_h), h))
+                if 0 <= x_at_h <= w:
+                    if not forward_only or (h - y) * dy >= 0: points.append(QPoint(int(x_at_h), h))
             return points
 
         if self.type == 'segment':
             return p1, p2
         elif self.type == 'ray':
-            candidates = get_intersections(x1, y1, dx, dy, forward_only=True)
+            candidates = get_intersections_standard(x1, y1, dx, dy, forward_only=True)
             end_point = p2
             if candidates:
                 end_point = max(candidates, key=lambda p: (p.x()-x1)**2 + (p.y()-y1)**2)
             return p1, end_point
         elif self.type == 'line':
-            candidates = get_intersections(x1, y1, dx, dy, forward_only=False)
+            candidates = get_intersections_standard(x1, y1, dx, dy, forward_only=False)
             if len(candidates) >= 2:
                 candidates.sort(key=lambda p: (p.x(), p.y()))
-                return candidates[0], candidates[-1]
+                return candidates[-1], candidates[0] # Furthest points
             return p1, p2
         return p1, p2
         
@@ -120,47 +200,83 @@ class LineObject(DrawingObject):
         x0, y0 = point.x(), point.y()
         x1, y1 = p1.x(), p1.y()
 
-        if self.type == 'hline':
-            # Distance to horizontal line y = y1
-            return abs(y0 - y1) <= threshold
-        elif self.type == 'vline':
-            # Distance to vertical line x = x1
-            return abs(x0 - x1) <= threshold
+        if self.type == 'hline': return abs(y0 - y1) <= threshold
+        elif self.type == 'vline': return abs(x0 - x1) <= threshold
 
-        p2 = self.p2_obj.pos()
-        x2, y2 = p2.x(), p2.y()
-        dx = x2 - x1
-        dy = y2 - y1
+        # For general lines, we need P2.
+        # If Parallel/Perp, we might not have a stable P2 in self.p2_obj.
+        # But we DO have a visual P2 if we calculate it. 
+        # However, calculating it requires 'rect'.
+        # Since 'contains' signature is fixed, we can't easily get 'rect'.
+        # But we can approximate or rely on p2_obj if it exists.
         
-        if dx == 0 and dy == 0: return False
+        # If type is parallel/perp, we might have been initialized with p1=p2 (dummy).
+        # In that case, we need to depend on the reference line slope.
+        
+        dx, dy = 0, 0
+        has_direction = False
+        
+        if self.type in ['parallel', 'perpendicular'] and self.reference_line:
+             # Calculate slope from reference
+            ref_p1 = self.reference_line.p1_obj.pos()
+            ref_p2 = self.reference_line.p2_obj.pos() # Might be dummy if ref is H/V
             
+            ref_dx, ref_dy = 0, 0
+            if self.reference_line.type == 'hline': ref_dx, ref_dy = 1, 0
+            elif self.reference_line.type == 'vline': ref_dx, ref_dy = 0, 1
+            else:
+                ref_dx = ref_p2.x() - ref_p1.x()
+                ref_dy = ref_p2.y() - ref_p1.y()
+                
+            if self.type == 'parallel':
+                dx, dy = ref_dx, ref_dy
+            else: # perpendicular
+                dx, dy = -ref_dy, ref_dx
+            has_direction = True
+            
+        elif self.p2_obj:
+            p2 = self.p2_obj.pos()
+            dx = p2.x() - x1
+            dy = p2.y() - y1
+            has_direction = True
+
+        if not has_direction or (dx == 0 and dy == 0): return False
+            
+        # Distance from point to infinite line
+        # |Ax + By + C| / sqrt(A^2 + B^2)
+        # Line eq: -dy*x + dx*y + C = 0 -> A=-dy, B=dx
+        # C = dy*x1 - dx*y1
+        
         A = -dy
         B = dx
         C = dy*x1 - dx*y1
         
-        dist = abs(A*x0 + B*y0 + C) / math.sqrt(A*A + B*B)
+        denom = math.sqrt(A*A + B*B)
+        if denom == 0: return False
+        
+        dist = abs(A*x0 + B*y0 + C) / denom
         
         if dist > threshold: return False
             
+        # Check segment/ray bounds
+        # Project t
+        # t = ((P - P1) . (P2 - P1)) / |P2 - P1|^2
+        # Here (dx, dy) represents (P2 - P1)
+        
         p1_to_pt_x = x0 - x1
         p1_to_pt_y = y0 - y1
+        
         len_sq = dx*dx + dy*dy
         t = (p1_to_pt_x * dx + p1_to_pt_y * dy) / len_sq
         
         if self.type == 'segment': return 0 <= t <= 1
         elif self.type == 'ray': return t >= 0
-        elif self.type == 'line': return True
-        return False
+        
+        # Line, HLine, VLine, Parallel, Perpendicular are infinite
+        return True
 
     def move(self, dx, dy):
-        # When moving the line, we move the associated points
         self.p1_obj.move(dx, dy)
-        if self.type not in ['hline', 'vline']:
-            self.p2_obj.move(dx, dy)
-        # For H/V lines, do we move both points? 
-        # Yes, moving the line implies translating it. Moving p1 is key.
-        # But if we move HLine, p2 might be irrelevant or we just move visible line.
-        # Actually hline/vline only depends on p1, p2 is just a placeholder or could be used for rotation later? 
-        # For now, p1 defines the position (x1 for vline, y1 for hline).
-        # So moving p1 is enough to move the infinite line. 
-        # But to be consistent with "contains" and other logic, let's move both if present.
+        if self.type not in ['hline', 'vline', 'parallel', 'perpendicular']:
+            if self.p2_obj:
+                self.p2_obj.move(dx, dy)

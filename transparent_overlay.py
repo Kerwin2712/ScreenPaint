@@ -29,6 +29,10 @@ class TransparentOverlay(QWidget):
         self.pending_p1 = None # PointObject if waiting for P2
         self.press_pos = None # To detect drag vs click
         
+        # Parallel/Perp State
+        self.selected_ref_line = None
+        self.selected_through_point = None
+        
         # Tools
         self.currentTool = 'pen'
         self.brushSize = 3
@@ -78,46 +82,50 @@ class TransparentOverlay(QWidget):
                 obj.draw(painter, rect)
             
         # 3. Draw Preview
-        if self.pending_p1:
-            # Create a temp line using pending P1 and current mouse pos
-            # Use cursor pos from mapFromGlobal or last tracked pos
-            from PyQt6.QtGui import QCursor # Import here or top
-            mouse_pos = self.mapFromGlobal(QCursor.pos())
-            # To create a temp line object, we need a "PointObject" for the cursor?
-            # Or just manually draw for preview to avoid ID spam
-            
-            # Manually draw preview using LineObject logic would be cleaner but complex to reuse.
-            # Create a valid LineObject with a dummy P2
-            dummy_p2 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
-            temp_line = LineObject(self.pending_p1, dummy_p2, self.currentTool, self.brushColor, self.brushSize)
-            temp_line.draw(painter, rect)
+        if self.pending_p1 or (self.currentTool in ['parallel', 'perpendicular'] and (self.selected_ref_line or self.selected_through_point)):
+           self._draw_line_preview(painter)
+
+    def _draw_line_preview(self, painter):
+        if self.currentTool in ['parallel', 'perpendicular']:
+             # Draw if we have enough info OR just drawing a cursor indicator
+             # Actually, if we have Ref Line and NO Point, we can draw a "ghost" line following cursor
+             # If we have Point and NO Ref Line, we can't draw anything specific yet.
+             
+             if self.selected_ref_line:
+                 from PyQt6.QtGui import QCursor
+                 mouse_pos = self.mapFromGlobal(QCursor.pos())
+                 dummy_p1 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
+                 temp_line = LineObject(dummy_p1, dummy_p1, self.currentTool, self.brushColor, self.brushSize, reference_line=self.selected_ref_line)
+                 temp_line.draw(painter, self.rect())
+                 
+        elif self.pending_p1:
+             from PyQt6.QtGui import QCursor 
+             mouse_pos = self.mapFromGlobal(QCursor.pos())
+             dummy_p2 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
+             temp_line = LineObject(self.pending_p1, dummy_p2, self.currentTool, self.brushColor, self.brushSize)
+             temp_line.draw(painter, self.rect())
 
     def mousePressEvent(self, event):
         self.interacted.emit()
-        from PyQt6.QtGui import QCursor # Import here or top
+        from PyQt6.QtGui import QCursor 
         
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             self.lastPoint = pos
-            self.startPoint = pos # Freehand uses this
+            self.startPoint = pos 
             
             if self.currentTool == 'hand':
                 # Hit detection: Prioritize Points over Lines
                 hit_obj = None
-                
-                # Check Points first (Top-most first if multiple)
                 for obj in reversed(self.objects):
                     if isinstance(obj, PointObject) and obj.contains(pos):
                         hit_obj = obj
                         break
-                
-                # If no Point hit, check Lines
                 if not hit_obj:
                     for obj in reversed(self.objects):
                         if isinstance(obj, LineObject) and obj.contains(pos):
                             hit_obj = obj
-                            break
-                            
+                            break 
                 if hit_obj:
                     self.draggingObject = hit_obj
                     self.lastDragPoint = pos
@@ -129,7 +137,69 @@ class TransparentOverlay(QWidget):
             elif self.currentTool == 'eraser':
                 self.drawing = True
                 self._erase_objects_at(pos)
+            
+            elif self.currentTool in ['parallel', 'perpendicular']:
+                # Flexible 2-Way Selection:
+                # 1. Did we hit a Point?
+                # 2. Did we hit a Line?
+                # 3. Handle State
                 
+                hit_point = None
+                hit_line = None
+                
+                for obj in reversed(self.objects):
+                    if isinstance(obj, PointObject) and obj.contains(pos):
+                        hit_point = obj
+                        break
+                
+                if not hit_point:
+                    for obj in reversed(self.objects):
+                        if isinstance(obj, LineObject) and obj.contains(pos):
+                            # Prevent selecting H/V lines if we can't calculate slope easily?
+                            # Now contains() is better.
+                            hit_line = obj
+                            break
+                
+                # Handling Selection
+                if hit_line:
+                    self.selected_ref_line = hit_line
+                    # If we already have a point, Create!
+                    if self.selected_through_point:
+                        self._create_pp_line(self.selected_through_point, self.selected_ref_line)
+                        self._reset_pp_tool()
+                    else:
+                        self.drawing = True # For preview
+
+                elif hit_point:
+                    self.selected_through_point = hit_point
+                    # If we already have a line, Create!
+                    if self.selected_ref_line:
+                         self._create_pp_line(self.selected_through_point, self.selected_ref_line)
+                         self._reset_pp_tool()
+                    else:
+                        # Waiting for line
+                        pass
+                else:
+                    # Clicked Empty Space
+                    if self.selected_ref_line:
+                        # User wants to create a new point here to pass through
+                        p1 = self._create_point(pos)
+                        self._create_pp_line(p1, self.selected_ref_line)
+                        self._reset_pp_tool()
+                    elif self.selected_through_point:
+                         # User has point, but clicked empty space.
+                         # Maybe they missed the line? Do nothing.
+                         pass
+                    else:
+                        # Nothing selected, clicked empty space.
+                        # Maybe create a point?
+                        # User request: "Select a line and place a point OR vice versa"
+                        # If I assume user starts with empty -> create point -> then select line
+                        p1 = self._create_point(pos)
+                        self.selected_through_point = p1
+                        # Now waiting for line
+                        pass
+
             elif self.currentTool in ['segment', 'ray', 'line', 'hline', 'vline']:
                 # Dual Mode Logic
                 # For hline/vline, ideally we just need ONE click (the point it passes through).
@@ -243,6 +313,16 @@ class TransparentOverlay(QWidget):
         self.objects = [obj for obj in self.objects if obj not in final_removal]
         self.update()
 
+    def _create_pp_line(self, p1, ref_line):
+        new_line = LineObject(p1, p1, self.currentTool, self.brushColor, self.brushSize, reference_line=ref_line)
+        self.objects.append(new_line)
+        self.update()
+        
+    def _reset_pp_tool(self):
+        self.selected_ref_line = None
+        self.selected_through_point = None
+        self.drawing = False
+
     def _draw_freehand(self, currentPoint):
         painter = QPainter(self.image)
         if self.currentTool == 'eraser':
@@ -262,44 +342,64 @@ class TransparentOverlay(QWidget):
     def set_tool_pen(self): 
         self.currentTool = 'pen'
         self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_eraser(self): 
         self.currentTool = 'eraser'
         self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_line_segment(self): 
         self.currentTool = 'segment'
         self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_line_ray(self): 
         self.currentTool = 'ray'
         self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_line_infinite(self): 
         self.currentTool = 'line'
         self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_line_horizontal(self):
         self.currentTool = 'hline'
         self.pending_p1 = None
+        self.reference_line = None
 
     def set_tool_line_vertical(self):
         self.currentTool = 'vline'
         self.pending_p1 = None
+        self.reference_line = None
+
+    def set_tool_line_parallel(self):
+        self.currentTool = 'parallel'
+        self.pending_p1 = None
+        self.reference_line = None # Waiting to select ref line
+        
+    def set_tool_line_perpendicular(self):
+        self.currentTool = 'perpendicular'
+        self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_point(self): 
         self.currentTool = 'point'
         self.pending_p1 = None
+        self.reference_line = None
         
     def set_tool_hand(self): 
         self.currentTool = 'hand'
         self.pending_p1 = None
+        self.reference_line = None
 
     def clear_canvas(self):
         self.image.fill(QColor(0, 0, 0, 1))
         self.objects.clear()
         self.pointIdCounter = 1
         self.pending_p1 = None
+        self.reference_line = None
         self.update()
         
 from PyQt6.QtGui import QCursor # Ensure import
