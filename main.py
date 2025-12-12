@@ -99,6 +99,11 @@ def main():
     toolbar.tool_line_parallel.connect(overlay.set_tool_line_parallel)
     toolbar.tool_line_perpendicular.connect(overlay.set_tool_line_perpendicular)
 
+    # Circle Tools
+    toolbar.tool_circle_radius.connect(overlay.set_tool_circle_radius)
+    toolbar.tool_circle_center_point.connect(overlay.set_tool_circle_center_point)
+    toolbar.tool_circle_compass.connect(overlay.set_tool_circle_compass)
+
     # Object Tools
     toolbar.tool_point.connect(overlay.set_tool_point)
     toolbar.tool_hand.connect(overlay.set_tool_hand)

@@ -217,7 +217,7 @@ class LineObject(DrawingObject):
         has_direction = False
         
         if self.type in ['parallel', 'perpendicular'] and self.reference_line:
-             # Calculate slope from reference
+            # Calculate slope from reference
             ref_p1 = self.reference_line.p1_obj.pos()
             ref_p2 = self.reference_line.p2_obj.pos() # Might be dummy if ref is H/V
             
@@ -280,3 +280,70 @@ class LineObject(DrawingObject):
         if self.type not in ['hline', 'vline', 'parallel', 'perpendicular']:
             if self.p2_obj:
                 self.p2_obj.move(dx, dy)
+
+class CircleObject(DrawingObject):
+    def __init__(self, center_point_obj, radius_param, circle_type='radius_num', color=Qt.GlobalColor.green, width=2):
+        self.center_obj = center_point_obj # PointObject
+        # radius_param can be:
+        # - float (fixed number from input)
+        # - PointObject (distance from center to this point defines radius)
+        # - float (distance calculated from 2 other points for compass) - Compass logic usually results in fixed radius OR dependent on 2 other points.
+        # Let's make it flexible.
+        self.radius_param = radius_param 
+        self.type = circle_type # 'radius_num', 'center_point' (radius from P2), 'compass' (radius from distance P2-P3, center at P1. Wait, Compass needs 2 points defining radius, then center.)
+        # If 'compass', radius_param might be a simple value or a tuple of points?
+        # User says: "Compas, hay que seleccionar 2 puntos y al hacer clic se crea un circulo con centro en el punto creado y el radio es la distacia entre los 2 puntos seleccionados"
+        # So Compass Radius is CONSTANT distance between A and B at time of creation? Or Dynamic? 
+        # Usually compass maintains distance. Moving A or B changes radius of circle at C. 
+        # So radius_param for compass could be (PointA, PointB).
+        
+        self.color = color
+        self.width = width
+    
+    def get_radius(self):
+        if self.type == 'radius_num':
+            return float(self.radius_param)
+        elif self.type == 'center_point':
+            # Distance between center and param point
+            p_edge = self.radius_param.pos()
+            center = self.center_obj.pos()
+            return math.sqrt( (p_edge.x()-center.x())**2 + (p_edge.y()-center.y())**2 )
+        elif self.type == 'compass':
+            # radius_param is (PointA, PointB)
+            pA = self.radius_param[0].pos()
+            pB = self.radius_param[1].pos()
+            return math.sqrt( (pB.x()-pA.x())**2 + (pB.y()-pA.y())**2 )
+        return 10.0
+
+    def draw(self, painter, overlay_rect=None):
+        painter.setPen(QPen(self.color, self.width, Qt.PenStyle.SolidLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        center = self.center_obj.pos()
+        r = self.get_radius()
+        
+        painter.drawEllipse(center, int(r), int(r))
+
+    def contains(self, point):
+        # Hit detection: strictly on the rim? or inside? 
+        # Usually rim for circles in geometry apps.
+        threshold = 5
+        
+        center = self.center_obj.pos()
+        r = self.get_radius()
+        
+        dist = math.sqrt( (point.x()-center.x())**2 + (point.y()-center.y())**2 )
+        
+        return abs(dist - r) <= threshold
+
+    def move(self, dx, dy):
+        # Moving circle moves its center.
+        self.center_obj.move(dx, dy)
+        # If 'center_point', moving circle (center) updates visual circle. Radius point stays?
+        # If I move the circle, I usually expect the whole shape to translate.
+        # But if it depends on other points...
+        # If 'radius_num', simply moving center is fine.
+        # If 'center_point', moving center changes radius if edge point is not moved.
+        # To Move the strict circle, we just move center.
+        # The user can move the defining points separately to reshape.
+        pass

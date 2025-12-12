@@ -92,6 +92,10 @@ class Toolbar(QWidget):
     tool_line_vertical = pyqtSignal()
     tool_line_parallel = pyqtSignal()
     tool_line_perpendicular = pyqtSignal()
+    # Signal for Circle Tools
+    tool_circle_radius = pyqtSignal()
+    tool_circle_center_point = pyqtSignal() # Centro a Punto
+    tool_circle_compass = pyqtSignal()      # Compas
     # Signals for Object Tools
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
@@ -225,6 +229,45 @@ class Toolbar(QWidget):
         # Set Menu via built-in setMenu logic (though we trigger it on hover)
         self.btn_line.setMenu(self.line_menu)
         
+        # Circle Tool Button with Menu
+        self.btn_circle = QPushButton("⭕")
+        self.btn_circle.setToolTip("Herramientas de Círculo")
+        self.btn_circle.setStyleSheet(btn_style)
+        
+        # Create Circle Menu
+        self.circle_menu = QMenu(self)
+        self.circle_menu.setStyleSheet("""
+            QMenu {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                padding: 5px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #444444;
+            }
+        """)
+        
+        action_radius = QAction("Centro y Radio", self)
+        action_radius.triggered.connect(self.tool_circle_radius.emit)
+        self.circle_menu.addAction(action_radius)
+        
+        action_center_point = QAction("Centro a Punto", self)
+        action_center_point.triggered.connect(self.tool_circle_center_point.emit)
+        self.circle_menu.addAction(action_center_point)
+        
+        action_compass = QAction("Compás", self)
+        action_compass.triggered.connect(self.tool_circle_compass.emit)
+        self.circle_menu.addAction(action_compass)
+        
+        self.btn_circle.setMenu(self.circle_menu)
+        layout.addWidget(self.btn_circle)
+
+        # Hook up hover for Circle menu too
+        self.btn_circle.installEventFilter(self)
+        
         # Install Event Filter to handle Hover
         self.btn_line.installEventFilter(self)
         
@@ -284,32 +327,33 @@ class Toolbar(QWidget):
         self.layout().update()
 
     def eventFilter(self, source, event):
-        if source == self.btn_line and event.type() == event.Type.Enter:
-            # Show menu on hover
-            # Determine direction based on screen position
-            # Use QTimer to debounce slightly to avoid accidental triggers or just show immediately
-            self.show_line_menu()
-            return True
+        if event.type() == event.Type.Enter:
+            if source == self.btn_line:
+                self.show_menu(self.btn_line, self.line_menu)
+                return True
+            elif source == self.btn_circle:
+                self.show_menu(self.btn_circle, self.circle_menu)
+                return True
         return super().eventFilter(source, event)
 
-    def show_line_menu(self):
+    def show_menu(self, button, menu):
         # Determine if we should show up or down based on screen geometry
         # Get button global position
-        global_pos = self.btn_line.mapToGlobal(QPoint(0, 0))
-        screen = self.window().screen() or self.btn_line.screen()
+        global_pos = button.mapToGlobal(QPoint(0, 0))
+        screen = self.window().screen() or button.screen()
         screen_geo = screen.geometry()
         
-        menu_height = self.line_menu.sizeHint().height()
+        menu_height = menu.sizeHint().height()
         
         # Default to showing below
-        pos = global_pos + QPoint(0, self.btn_line.height())
+        pos = global_pos + QPoint(0, button.height())
         
         # Check if it fits below
-        if global_pos.y() + self.btn_line.height() + menu_height > screen_geo.bottom():
+        if global_pos.y() + button.height() + menu_height > screen_geo.bottom():
             # Show above
             pos = global_pos - QPoint(0, menu_height)
             
-        self.line_menu.exec(pos)
+        menu.exec(pos)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
