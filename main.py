@@ -1,5 +1,5 @@
 import sys
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QBoxLayout
 from PyQt6.QtCore import Qt
 from float_menu import FloatingMenu, Toolbar
 from transparent_overlay import TransparentOverlay
@@ -50,9 +50,20 @@ def main():
         toolbar.raise_()
 
     def hide_tools():
+        # Store current geometry before hiding
+        toolbar_geo = toolbar.geometry()
+        is_rtl = toolbar.layout().direction() == QBoxLayout.Direction.RightToLeft
+        
         toolbar.hide()
-        # Position menu where the toolbar was
-        menu.move(toolbar.pos())
+        
+        if is_rtl:
+            # Anchor is at Top-Right. Align Menu Top-Right to Toolbar Top-Right.
+            new_x = toolbar_geo.x() + toolbar_geo.width() - menu.width()
+            menu.move(new_x, toolbar_geo.y())
+        else:
+            # Anchor is at Top-Left. Align Menu Top-Left to Toolbar Top-Left.
+            menu.move(toolbar_geo.topLeft())
+            
         menu.show()
         menu.raise_()
         
