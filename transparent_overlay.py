@@ -7,6 +7,7 @@ from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
 from PyQt6.QtWidgets import QFileDialog
 from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject
 from capture_screen import take_screenshot
+import copy
 
 # --- Overlay Class ---
 
@@ -27,6 +28,10 @@ class TransparentOverlay(QWidget):
         # State
         self.image = QPixmap()
         self.objects = []
+        
+        # Undo/Redo Stacks
+        self.undo_stack = []
+        self.redo_stack = []
         
         self.lastPoint = QPoint()
         self.startPoint = QPoint()
@@ -145,7 +150,41 @@ class TransparentOverlay(QWidget):
         self.drawing = False
         # Do not reset pending_p1 here usually, but slots do it.
 
+    def save_state(self):
+        # Deep copy to ensure independence
+        state_objects = copy.deepcopy(self.objects)
+        state_image = self.image.copy()
+        self.undo_stack.append((state_objects, state_image))
+        self.redo_stack.clear() # New action clears redo history
+
+    def undo(self):
+        if not self.undo_stack:
+            return
+        
+        # Save current to Redo
+        self.redo_stack.append((copy.deepcopy(self.objects), self.image.copy()))
+        
+        # Pop from Undo
+        state_objects, state_image = self.undo_stack.pop()
+        self.objects = state_objects
+        self.image = state_image
+        self.update()
+
+    def redo(self):
+        if not self.redo_stack:
+            return
+            
+        # Save current to Undo
+        self.undo_stack.append((copy.deepcopy(self.objects), self.image.copy()))
+        
+        # Pop from Redo
+        state_objects, state_image = self.redo_stack.pop()
+        self.objects = state_objects
+        self.image = state_image
+        self.update()
+
     def clear_canvas(self):
+        self.save_state()
         self.image.fill(QColor(0, 0, 0, 1))
         self.objects.clear()
         self.pointIdCounter = 1
@@ -201,29 +240,29 @@ class TransparentOverlay(QWidget):
         
         # 4. Draw Capture Selection
         if self.currentTool == 'capture_crop' and self.pending_p1:
-             mouse_pos = self.mapFromGlobal(QCursor.pos())
-             pen = QPen(Qt.GlobalColor.cyan, 2, Qt.PenStyle.DashLine)
-             painter.setPen(pen)
-             painter.setBrush(QColor(0, 255, 255, 50))
-             rect = QRect(self.pending_p1.pos(), mouse_pos).normalized()
-             painter.drawRect(rect)
+            mouse_pos = self.mapFromGlobal(QCursor.pos())
+            pen = QPen(Qt.GlobalColor.cyan, 2, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QColor(0, 255, 255, 50))
+            rect = QRect(self.pending_p1.pos(), mouse_pos).normalized()
+            painter.drawRect(rect)
 
     def _draw_preview(self, painter):
         if self.currentTool in ['parallel', 'perpendicular']:
-             self._draw_pp_preview(painter)
+            self._draw_pp_preview(painter)
         elif self.currentTool in ['circle_center_point', 'circle_compass']:
-             self._draw_circle_preview(painter)
+            self._draw_circle_preview(painter)
         elif self.pending_p1 and self.currentTool in ['segment', 'ray', 'line']:
-             self._draw_line_preview(painter)
+            self._draw_line_preview(painter)
         elif self.pending_p1 and self.currentTool == 'rectangle':
-             self._draw_rect_preview(painter)
+            self._draw_rect_preview(painter)
 
     def _draw_pp_preview(self, painter):
         if self.selected_ref_line:
-             mouse_pos = self.mapFromGlobal(QCursor.pos())
-             dummy_p1 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
-             temp_line = LineObject(dummy_p1, dummy_p1, self.currentTool, self.brushColor, self.brushSize, reference_line=self.selected_ref_line)
-             temp_line.draw(painter, self.rect())
+            mouse_pos = self.mapFromGlobal(QCursor.pos())
+            dummy_p1 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
+            temp_line = LineObject(dummy_p1, dummy_p1, self.currentTool, self.brushColor, self.brushSize, reference_line=self.selected_ref_line)
+            temp_line.draw(painter, self.rect())
 
     def _draw_line_preview(self, painter):
         mouse_pos = self.mapFromGlobal(QCursor.pos())
@@ -254,14 +293,14 @@ class TransparentOverlay(QWidget):
         mouse_pos = self.mapFromGlobal(QCursor.pos())
         
         if self.currentTool == 'circle_center_point' and self.pending_p1:
-             dummy_p2 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
-             temp_circle = CircleObject(self.pending_p1, dummy_p2, 'center_point')
-             temp_circle.draw(painter)
-             
+            dummy_p2 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
+            temp_circle = CircleObject(self.pending_p1, dummy_p2, 'center_point')
+            temp_circle.draw(painter)
+            
         elif self.currentTool == 'circle_compass' and len(self.compass_pts) == 2:
-             dummy_center = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
-             temp_circle = CircleObject(dummy_center, (self.compass_pts[0], self.compass_pts[1]), 'compass')
-             temp_circle.draw(painter)
+            dummy_center = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
+            temp_circle = CircleObject(dummy_center, (self.compass_pts[0], self.compass_pts[1]), 'compass')
+            temp_circle.draw(painter)
 
     def mousePressEvent(self, event):
         self.interacted.emit()
@@ -286,17 +325,19 @@ class TransparentOverlay(QWidget):
                 if hit_obj:
                     self.draggingObject = hit_obj
                     self.lastDragPoint = pos
+                    self.save_state() # Save before move
                     self.drawing = True
                 return 
 
             if self.currentTool == 'eraser':
                 self.drawing = True
+                self.save_state() # Save before erase
                 self._erase_objects_at(pos)
                 return
 
             if self.currentTool == 'point': 
-                 self._create_point(pos)
-                 return
+                self._create_point(pos)
+                return
             
             # Circle Tools
             if self.currentTool == 'circle_radius':
@@ -323,6 +364,7 @@ class TransparentOverlay(QWidget):
                 dialog.move(QCursor.pos())
 
                 if dialog.exec():
+                    self.save_state()
                     radius = dialog.doubleValue()
                     circle = CircleObject(center, radius, 'radius_num')
                     self.objects.append(circle)
@@ -340,6 +382,7 @@ class TransparentOverlay(QWidget):
                 if not self.pending_p1:
                     self.pending_p1 = hit_p
                 else:
+                    self.save_state()
                     circle = CircleObject(self.pending_p1, hit_p, 'center_point')
                     self.objects.append(circle)
                     self.pending_p1 = None
@@ -355,6 +398,7 @@ class TransparentOverlay(QWidget):
                     self.compass_pts.append(hit_p)
                 else:
                     # Center
+                    self.save_state()
                     circle = CircleObject(hit_p, (self.compass_pts[0], self.compass_pts[1]), 'compass')
                     self.objects.append(circle)
                     self.compass_pts = [] # Reset
@@ -367,9 +411,9 @@ class TransparentOverlay(QWidget):
                 hit_line = None
                 if not hit_point:
                     for obj in reversed(self.objects):
-                         if isinstance(obj, LineObject) and obj.contains(pos):
-                             hit_line = obj
-                             break
+                        if isinstance(obj, LineObject) and obj.contains(pos):
+                            hit_line = obj
+                            break
                 
                 if hit_line:
                     self.selected_ref_line = hit_line
@@ -382,8 +426,8 @@ class TransparentOverlay(QWidget):
                 elif hit_point:
                     self.selected_through_point = hit_point
                     if self.selected_ref_line:
-                         self._create_pp_line(self.selected_through_point, self.selected_ref_line)
-                         self._reset_tool_state()
+                        self._create_pp_line(self.selected_through_point, self.selected_ref_line)
+                        self._reset_tool_state()
                 else:
                     # Empty space
                     if self.selected_ref_line:
@@ -408,8 +452,8 @@ class TransparentOverlay(QWidget):
                     hit_p = self._get_point_at(pos)
                     # Check for existing point to snap?
                     if not hit_p:
-                         hit_p = self._create_point(pos)
-                         
+                        hit_p = self._create_point(pos)
+                        
                     if not self.pending_p1:
                         self.pending_p1 = hit_p
                     else:
@@ -442,6 +486,7 @@ class TransparentOverlay(QWidget):
             
             if self.currentTool == 'pen':
                 self.drawing = True
+                self.save_state()
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
@@ -500,6 +545,7 @@ class TransparentOverlay(QWidget):
         return None
 
     def _create_point(self, pos):
+        self.save_state()
         new_point = PointObject(pos.x(), pos.y(), self.pointIdCounter)
         self.pointIdCounter += 1
         self.objects.append(new_point)
@@ -507,11 +553,13 @@ class TransparentOverlay(QWidget):
         return new_point
         
     def _create_line_object(self, p1_obj, p2_obj):
+        self.save_state()
         new_line = LineObject(p1_obj, p2_obj, self.currentTool, self.brushColor, self.brushSize)
         self.objects.append(new_line)
         self.update()
 
     def _create_pp_line(self, p1, ref_line):
+        self.save_state()
         new_line = LineObject(p1, p1, self.currentTool, self.brushColor, self.brushSize, reference_line=ref_line)
         self.objects.append(new_line)
         self.update()
@@ -600,6 +648,7 @@ class TransparentOverlay(QWidget):
         p4_obj = self._create_point(QPoint(x1, y3))
         
         # Order: p1, p2, p3, p4
+        self.save_state()
         new_rect = RectangleObject(p1_obj, p2_obj, p3_obj, p4_obj)
         self.objects.append(new_rect)
         self.pending_p1 = None

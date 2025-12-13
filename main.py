@@ -104,6 +104,10 @@ def main():
     toolbar.tool_eraser.connect(overlay.set_tool_eraser)
     toolbar.tool_clear.connect(overlay.clear_canvas)
     
+    # Undo/Redo
+    toolbar.tool_undo.connect(overlay.undo)
+    toolbar.tool_redo.connect(overlay.redo)
+    
     # Line Tools
     toolbar.tool_line_segment.connect(overlay.set_tool_line_segment)
     toolbar.tool_line_ray.connect(overlay.set_tool_line_ray)

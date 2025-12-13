@@ -107,6 +107,10 @@ class Toolbar(QWidget):
     tool_record_full = pyqtSignal()
     tool_record_crop = pyqtSignal()
 
+    # Signals for Undo/Redo
+    tool_undo = pyqtSignal()
+    tool_redo = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.setWindowFlags(
@@ -176,7 +180,6 @@ class Toolbar(QWidget):
         self.btn_pen = QPushButton("✏️")
         self.btn_pen.setToolTip("Lápiz")
         self.btn_pen.setStyleSheet(btn_style)
-        self.btn_pen.clicked.connect(self.tool_pen.emit)
         self.btn_pen.clicked.connect(self.tool_pen.emit)
         layout.addWidget(self.btn_pen)
 
@@ -304,9 +307,6 @@ class Toolbar(QWidget):
         self.btn_rect.setMenu(self.rect_menu)
         layout.addWidget(self.btn_rect)
 
-        self.btn_rect.setMenu(self.rect_menu)
-        layout.addWidget(self.btn_rect)
-
         # Hook up hover
         self.btn_rect.installEventFilter(self)
 
@@ -363,6 +363,19 @@ class Toolbar(QWidget):
         self.btn_hand.setStyleSheet(btn_style)
         self.btn_hand.clicked.connect(self.tool_hand.emit)
         layout.addWidget(self.btn_hand)
+
+        # Undo/Redo Buttons (Before Eraser)
+        self.btn_undo = QPushButton("↩️")
+        self.btn_undo.setToolTip("Deshacer")
+        self.btn_undo.setStyleSheet(btn_style)
+        self.btn_undo.clicked.connect(self.tool_undo.emit)
+        layout.addWidget(self.btn_undo)
+
+        self.btn_redo = QPushButton("↪️")
+        self.btn_redo.setToolTip("Rehacer")
+        self.btn_redo.setStyleSheet(btn_style)
+        self.btn_redo.clicked.connect(self.tool_redo.emit)
+        layout.addWidget(self.btn_redo)
 
         # Eraser Button
         self.btn_eraser = QPushButton("🧹")
