@@ -56,8 +56,8 @@ def main():
             new_x = menu.x() + menu.width() - toolbar.width()
             toolbar.move(new_x, menu.y())
 
-        overlay.showFullScreen()
-        toolbar.update_toggle_icon(True) # Ensure icon is correct
+        overlay.hide()
+        toolbar.update_toggle_icon(False) # Ensure icon is correct (Closed)
         toolbar.show()
         toolbar.raise_()
 
