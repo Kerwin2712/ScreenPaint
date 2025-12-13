@@ -13,6 +13,7 @@ import copy
 
 class TransparentOverlay(QWidget):
     interacted = pyqtSignal()
+    crop_selected = pyqtSignal(QRect)
 
     def __init__(self):
         super().__init__()
@@ -462,14 +463,15 @@ class TransparentOverlay(QWidget):
                 return
                     
             if self.currentTool == 'capture_crop':
-                # Similar to rectangle drag but on release we capture
-                self.pending_p1 = self._create_point(pos) # Use invisible point logic? Or just store pos? 
-                # Actually _create_point adds to objects list which we maybe don't want.
-                # Let's just use pending_p1 as a PointObject or raw QPoint.
-                # Simplest: Just reuse PointObject implementation but don't add to self.objects?
-                # No, standardizing:
-                self.pending_p1 = PointObject(pos.x(), pos.y(), 0, size=0)
-                self.drawing = True
+                if not self.pending_p1:
+                    self.pending_p1 = PointObject(pos.x(), pos.y(), 0, size=0)
+                else:
+                    # Second click completion
+                    start_pos = self.pending_p1.pos()
+                    rect = QRect(start_pos, pos).normalized()
+                    self.pending_p1 = None
+                    self.crop_selected.emit(rect)
+                    self.update()
                 return
 
             if self.currentTool == 'rectangle':
@@ -534,9 +536,19 @@ class TransparentOverlay(QWidget):
                     
                     self._create_rectangle(self.pending_p1, hit_p)
 
-            
-            self.drawing = False
-            self.draggingObject = None
+            if self.currentTool == 'capture_crop':
+                if self.pending_p1:
+                    start_pos = self.pending_p1.pos()
+                    dist = (pos - start_pos).manhattanLength()
+                    
+                    if dist > 5:
+                        rect = QRect(start_pos, pos).normalized()
+                        self.pending_p1 = None
+                        self.crop_selected.emit(rect)
+                        self.update()
+                    # If dist <= 5, we treat it as the first click of a 2-click selection
+                self.drawing = False
+                return
 
     def _get_point_at(self, pos):
         for obj in reversed(self.objects):

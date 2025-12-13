@@ -150,6 +150,27 @@ def main():
     toolbar.tool_capture_full.connect(handle_capture_full)
     toolbar.tool_capture_crop.connect(overlay.set_tool_capture_crop)
     
+    def handle_crop_capture(rect):
+        menu.hide()
+        toolbar.hide()
+        overlay.update() 
+        QApplication.processEvents()
+        
+        import time
+        time.sleep(0.1) 
+        
+        fname, _ = QFileDialog.getSaveFileName(None, "Guardar Recorte", "", "PNG Files (*.png)")
+        if fname:
+            take_screenshot(rect=rect, filename=fname)
+            
+        menu.show()
+        # Since we triggered this from the toolbar, it was visible. Restore it.
+        toolbar.show()
+        
+        overlay.set_tool_pen()
+
+    overlay.crop_selected.connect(handle_crop_capture)
+    
     def handle_record_full():
         # Hide UI
         menu.hide()
