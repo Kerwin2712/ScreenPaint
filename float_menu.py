@@ -286,7 +286,7 @@ class Toolbar(QWidget):
         self.btn_circle.installEventFilter(self)
         
         # Rectangle Tool Button
-        self.btn_rect = QPushButton("▭")
+        self.btn_rect = QPushButton("🔳")
         self.btn_rect.setToolTip("Rectángulo")
         self.btn_rect.setStyleSheet(btn_style)
         
@@ -441,7 +441,7 @@ class Toolbar(QWidget):
 
     def update_toggle_icon(self, is_visible):
         if is_visible:
-            self.btn_toggle.setText("👁️")
+            self.btn_toggle.setText("🐵")
             self.btn_toggle.setToolTip("Ocultar Lienzo")
         else:
             self.btn_toggle.setText("🙈")
