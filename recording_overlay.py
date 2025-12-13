@@ -24,7 +24,7 @@ class ResizableRubberBand(QWidget):
         self.is_resizing = False
         self.resize_edge = None
         self.drag_start_pos = QPoint()
-        self.audio_enabled = False
+        self.audio_enabled = True
         self.is_paused = False
         
         # Border style

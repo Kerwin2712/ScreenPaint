@@ -354,7 +354,7 @@ class Toolbar(QWidget):
         # Audio Toggle
         self.act_audio = QAction("Grabar Audio", self)
         self.act_audio.setCheckable(True)
-        self.act_audio.setChecked(False) 
+        self.act_audio.setChecked(True) 
         self.act_audio.toggled.connect(self.tool_toggle_audio.emit)
         self.cam_menu.addAction(self.act_audio)
         
