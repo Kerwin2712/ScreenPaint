@@ -126,6 +126,7 @@ def main():
     toolbar.tool_point.connect(overlay.set_tool_point)
     toolbar.tool_hand.connect(overlay.set_tool_hand)
     toolbar.tool_rectangle.connect(overlay.set_tool_rectangle)
+    toolbar.tool_paint.connect(overlay.set_tool_paint)
     
     # Camera Tools Handlers
     def handle_capture_full():

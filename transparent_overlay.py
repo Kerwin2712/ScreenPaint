@@ -1,6 +1,6 @@
 import sys
 import math
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog, QColorDialog
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
@@ -138,6 +138,25 @@ class TransparentOverlay(QWidget):
         self.pending_p1 = None
         self._reset_tool_state()
         
+    def set_tool_paint(self):
+        # Open Color Dialog immediately when tool is selected
+        # Use QColorDialog
+        color = QColorDialog.getColor(self.brushColor, self, "Seleccionar Color")
+        
+        if color.isValid():
+            self.brushColor = color
+            self.currentTool = 'paint'
+            self._reset_tool_state()
+            # Change cursor to indicate paint mode?
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            # If cancelled, maybe revert to previous tool or stay in paint but keep old color?
+            # Let's stay in paint mode but keep old color if they just wanted to see the picker.
+            # Or effectively do nothing if they cancelled the "Enter Paint Mode" action.
+            # But they physically clicked the button.
+            self.currentTool = 'paint' 
+            self._reset_tool_state()
+
     def set_tool_capture_crop(self):
         self.currentTool = 'capture_crop'
         self.pending_p1 = None
@@ -149,6 +168,7 @@ class TransparentOverlay(QWidget):
         self.selected_through_point = None
         self.compass_pts = []
         self.drawing = False
+        self.setCursor(Qt.CursorShape.ArrowCursor) # Reset cursor by default
         # Do not reset pending_p1 here usually, but slots do it.
 
     def save_state(self):
@@ -338,6 +358,33 @@ class TransparentOverlay(QWidget):
 
             if self.currentTool == 'point': 
                 self._create_point(pos)
+                return
+            
+            if self.currentTool == 'paint':
+                # Hit detection
+                hit_obj = None
+                
+                # Check points first (topmost)
+                for obj in reversed(self.objects):
+                    if isinstance(obj, PointObject) and obj.contains(pos):
+                        hit_obj = obj
+                        break
+                
+                # Then lines/circles
+                if not hit_obj:
+                    for obj in reversed(self.objects):
+                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject)) and obj.contains(pos):
+                            hit_obj = obj
+                            break 
+                
+                if hit_obj:
+                    # Apply Color
+                    self.save_state()
+                    hit_obj.color = self.brushColor
+                    self.update()
+                
+                # Do NOT open dialog on empty space click. 
+                # User can click the toolbar button again to change color.
                 return
             
             # Circle Tools

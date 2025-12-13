@@ -99,7 +99,8 @@ class Toolbar(QWidget):
     # Signals for Object Tools
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
-    tool_hand = pyqtSignal()
+    tool_paint = pyqtSignal() # Paint Bucket
+    tool_rectangle = pyqtSignal()
     tool_rectangle = pyqtSignal()
     # Signals for Camera
     tool_capture_full = pyqtSignal()
@@ -363,6 +364,13 @@ class Toolbar(QWidget):
         self.btn_hand.setStyleSheet(btn_style)
         self.btn_hand.clicked.connect(self.tool_hand.emit)
         layout.addWidget(self.btn_hand)
+
+        # Paint Bucket Button
+        self.btn_paint = QPushButton("🪣")
+        self.btn_paint.setToolTip("Cubo de Pintura (Color)")
+        self.btn_paint.setStyleSheet(btn_style)
+        self.btn_paint.clicked.connect(self.tool_paint.emit)
+        layout.addWidget(self.btn_paint)
 
         # Undo/Redo Buttons (Before Eraser)
         self.btn_undo = QPushButton("↩️")
