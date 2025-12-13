@@ -1,7 +1,10 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog, QFrame
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog, QFrame, QApplication
 from PyQt6.QtCore import Qt, QRect, QPoint, QSize
 from PyQt6.QtGui import QPainter, QPen, QColor, QCursor
 from capture_screen import ScreenRecorder, take_screenshot
+import os
+import datetime
+import time
 
 class ResizableRubberBand(QWidget):
     """
@@ -163,8 +166,8 @@ class ResizableRubberBand(QWidget):
             
             # Drag anywhere empty in the frame
             elif pos.y() < frame_h and not self.control_bar.geometry().contains(pos):
-                  self.is_dragging = True
-                  self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                self.is_dragging = True
+                self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
@@ -179,7 +182,7 @@ class ResizableRubberBand(QWidget):
             self.setCursor(Qt.CursorShape.SizeBDiagCursor)
         # TR-BL should be FDiag (/)
         elif ((w - pos.x() < t) and (pos.y() < t)) or ((pos.x() < t) and (abs(frame_h - pos.y()) < t)):
-             self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
             
@@ -329,12 +332,20 @@ class ResizableRubberBand(QWidget):
         self.setWindowOpacity(0) # Hide
         QApplication.processEvents() # Update UI
         
-        import time
         time.sleep(0.1) # Wait for composition
         
-        fname, _ = QFileDialog.getSaveFileName(self, "Guardar Imagen", "", "PNG Files (*.png)")
-        if fname:
+        if self.recorder:
+            # Automatic save to video directory
+            video_path = self.recorder.output_filename
+            video_dir = os.path.dirname(video_path)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = os.path.join(video_dir, f"snapshot_{timestamp}.png")
             take_screenshot(rect=rect, filename=fname)
+        else:
+            # Manual save
+            fname, _ = QFileDialog.getSaveFileName(self, "Guardar Imagen", "", "PNG Files (*.png)")
+            if fname:
+                take_screenshot(rect=rect, filename=fname)
             
         self.setWindowOpacity(prev_opacity)
 
