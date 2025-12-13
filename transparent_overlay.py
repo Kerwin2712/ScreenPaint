@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
 from PyQt6.QtWidgets import QFileDialog
-from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject
+from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, calculate_intersection
 from capture_screen import take_screenshot
 import copy
 
@@ -364,7 +364,12 @@ class TransparentOverlay(QWidget):
                 return
 
             if self.currentTool == 'point': 
-                self._create_point(pos)
+                # Check for intersections first
+                intersection_point, parents = self._check_line_intersections(pos)
+                if intersection_point:
+                    self._create_point(intersection_point, parents=parents)
+                else:
+                    self._create_point(pos)
                 return
             
             if self.currentTool == 'paint':
@@ -559,6 +564,7 @@ class TransparentOverlay(QWidget):
                 dy = pos.y() - self.lastDragPoint.y()
                 self.draggingObject.move(dx, dy)
                 self.lastDragPoint = pos
+                self._propagate_changes()
                 self.update()
         else:
             # Update for preview drawing
@@ -610,9 +616,29 @@ class TransparentOverlay(QWidget):
                 return obj
         return None
 
-    def _create_point(self, pos):
+        return None
+
+    def _check_line_intersections(self, pos):
+        # Brute force check all pairs of lines
+        lines = [obj for obj in self.objects if isinstance(obj, LineObject)]
+        threshold = 10
+        
+        for i in range(len(lines)):
+            for j in range(i+1, len(lines)):
+                l1 = lines[i]
+                l2 = lines[j]
+                
+                pt = calculate_intersection(l1, l2)
+                if pt:
+                    # Check if click is near this intersection
+                    dist = (QPoint(pt.x(), pt.y()) - pos).manhattanLength()
+                    if dist <= threshold:
+                        return QPoint(pt.x(), pt.y()), (l1, l2)
+        return None, None
+
+    def _create_point(self, pos, parents=None):
         self.save_state()
-        new_point = PointObject(pos.x(), pos.y(), self.pointIdCounter)
+        new_point = PointObject(pos.x(), pos.y(), self.pointIdCounter, parents=parents)
         self.pointIdCounter += 1
         self.objects.append(new_point)
         self.update()
@@ -677,6 +703,15 @@ class TransparentOverlay(QWidget):
 
         self.objects = [obj for obj in self.objects if obj not in final_removal]
         self.update()
+
+    def _propagate_changes(self):
+        # Update dependent objects
+        # Currently only Points depend on Lines
+        for obj in self.objects:
+            if isinstance(obj, PointObject):
+                # We need to call update. PointObject.update() handles the logic check.
+                if hasattr(obj, 'update'):
+                    obj.update()
 
     def _draw_freehand(self, currentPoint):
         painter = QPainter(self.image)

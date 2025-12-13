@@ -2,6 +2,55 @@ import math
 from PyQt6.QtCore import Qt, QPoint, QRect
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 
+# --- Helper Functions ---
+def calculate_intersection(line1, line2):
+    # Retrieve points defining the infinite lines
+    # We need robust points. 
+    # Use p1 and p2 (or calculated p2 for some types)
+    
+    def get_line_coords(line):
+        p1 = line.p1_obj.pos()
+        if line.p2_obj:
+            p2 = line.p2_obj.pos()
+        else:
+            # Handle H/V/Parallel/Perp specially to get a second point
+            # Mock screen rect for calculation? 
+            # Or jus use slope logic directly?
+            # Let's use slope logic.
+            # But calculating slope requires logic similar to _calculate_geometry
+            # Let's mock a second point based on type
+            x1, y1 = p1.x(), p1.y()
+            if line.type == 'hline': return x1, y1, x1+100, y1
+            elif line.type == 'vline': return x1, y1, x1, y1+100
+            elif line.type in ['parallel', 'perpendicular'] and line.reference_line:
+                # Get ref slope
+                ref = line.reference_line
+                rx1, ry1, rx2, ry2 = get_line_coords(ref)
+                rdx, rdy = rx2 - rx1, ry2 - ry1
+                if line.type == 'parallel':
+                    return x1, y1, x1+rdx, y1+rdy
+                else: # Perp
+                    return x1, y1, x1-rdy, y1+rdx
+            # Fallback
+            return x1, y1, x1+10, y1
+            
+        return p1.x(), p1.y(), p2.x(), p2.y()
+
+    x1, y1, x2, y2 = get_line_coords(line1)
+    x3, y3, x4, y4 = get_line_coords(line2)
+    
+    denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+    if denom == 0:
+        return None # Parallel
+        
+    ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+    
+    # Intersection point
+    x = x1 + ua * (x2 - x1)
+    y = y1 + ua * (y2 - y1)
+    
+    return QPoint(int(x), int(y))
+
 # --- Shape Classes ---
 
 class DrawingObject:
@@ -15,12 +64,15 @@ class DrawingObject:
         raise NotImplementedError
 
 class PointObject(DrawingObject):
-    def __init__(self, x, y, id_num, color=Qt.GlobalColor.red, size=10):
+    def __init__(self, x, y, id_num, color=Qt.GlobalColor.red, size=10, parents=None):
         self.x = x
         self.y = y
         self.id = id_num
         self.color = color
         self.size = size # Radius
+        self.parents = parents # Tuple/List of parent objects (e.g., 2 Lines)
+        if self.parents:
+            self.color = Qt.GlobalColor.gray # Distinguish dependent points?
         
     def draw(self, painter, overlay_rect=None): 
         painter.setPen(Qt.PenStyle.NoPen)
@@ -40,8 +92,20 @@ class PointObject(DrawingObject):
         return (dx*dx + dy*dy) <= (self.size * self.size)
 
     def move(self, dx, dy):
+        if self.parents:
+            # Dependent points cannot be moved directly
+            return
         self.x += dx
         self.y += dy
+
+    def update(self):
+        if self.parents and len(self.parents) == 2:
+            # Assuming intersection of 2 lines for now
+            l1, l2 = self.parents
+            pt = calculate_intersection(l1, l2)
+            if pt:
+                self.x = pt.x()
+                self.y = pt.y()
         
     def pos(self):
         return QPoint(self.x, self.y)
