@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog, QFrame, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog, QFrame, QApplication, QProgressDialog
 from PyQt6.QtCore import Qt, QRect, QPoint, QSize
 from PyQt6.QtGui import QPainter, QPen, QColor, QCursor
 from capture_screen import ScreenRecorder, take_screenshot
@@ -35,8 +35,8 @@ class ResizableRubberBand(QWidget):
         
         # Recorder
         self.recorder = None
-        self.is_paused = False
-
+        self.progress_dialog = None
+        
     def _init_ui(self):
         # Layout for controls (Attached to bottom or top?)
         # Let's put a control bar at the bottom inside the frame area, implies it covers content? 
@@ -281,6 +281,7 @@ class ResizableRubberBand(QWidget):
             # Use Dynamic Geometry Source
             self.recorder = ScreenRecorder(geometry_source=self.get_capture_rect, output_filename=fname, audio_enabled=self.audio_enabled)
             self.recorder.recording_stopped.connect(self.on_recording_finished)
+            self.recorder.processing_started.connect(self.on_processing_started) # Connect new signal
             self.recorder.start()
             
             self.btn_rec.setEnabled(False)
@@ -305,7 +306,20 @@ class ResizableRubberBand(QWidget):
                 self.border_color = QColor(0, 255, 0) # Green
             self.update()
             
+    def on_processing_started(self):
+        # Show infinite progress dialog
+        self.progress_dialog = QProgressDialog("Procesando video... Por favor espere.", None, 0, 0, self)
+        self.progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.progress_dialog.setCancelButton(None) # Disable cancel
+        self.progress_dialog.setMinimumDuration(0) # Show immediately
+        self.progress_dialog.show()
+        QApplication.processEvents()
+            
     def on_recording_finished(self):
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+            
         self.recorder = None
         self.btn_rec.setEnabled(True)
         self.btn_pause.setEnabled(False)

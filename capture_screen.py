@@ -84,6 +84,7 @@ class ScreenRecorder(QThread):
     recording_started = pyqtSignal()
     recording_stopped = pyqtSignal()
     error_occurred = pyqtSignal(str)
+    processing_started = pyqtSignal() # New signal
 
     def __init__(self, rect=None, geometry_source=None, output_filename=None, audio_enabled=False):
         super().__init__()
@@ -195,6 +196,8 @@ class ScreenRecorder(QThread):
             # Merge if needed
             if self.audio_enabled and audio_filename and os.path.exists(video_filename) and os.path.exists(audio_filename):
                 try:
+                    self.processing_started.emit()
+                    
                     from moviepy import VideoFileClip, AudioFileClip
                     
                     video_clip = VideoFileClip(video_filename)
