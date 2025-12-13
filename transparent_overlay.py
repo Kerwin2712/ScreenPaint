@@ -547,8 +547,9 @@ class TransparentOverlay(QWidget):
                         self.crop_selected.emit(rect)
                         self.update()
                     # If dist <= 5, we treat it as the first click of a 2-click selection
-                self.drawing = False
-                return
+                
+            self.drawing = False
+            self.draggingObject = None
 
     def _get_point_at(self, pos):
         for obj in reversed(self.objects):
