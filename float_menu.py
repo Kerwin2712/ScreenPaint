@@ -397,6 +397,14 @@ class Toolbar(QWidget):
         self.btn_close.clicked.connect(self.close_app.emit)
         layout.addWidget(self.btn_close)
 
+    def update_toggle_icon(self, is_visible):
+        if is_visible:
+            self.btn_toggle.setText("👁️")
+            self.btn_toggle.setToolTip("Ocultar Lienzo")
+        else:
+            self.btn_toggle.setText("🙈")
+            self.btn_toggle.setToolTip("Mostrar Lienzo")
+
     def set_layout_rtl(self, is_rtl):
         direction = QBoxLayout.Direction.RightToLeft if is_rtl else QBoxLayout.Direction.LeftToRight
         self.layout().setDirection(direction)

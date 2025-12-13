@@ -57,6 +57,7 @@ def main():
             toolbar.move(new_x, menu.y())
 
         overlay.showFullScreen()
+        toolbar.update_toggle_icon(True) # Ensure icon is correct
         toolbar.show()
         toolbar.raise_()
 
@@ -82,8 +83,10 @@ def main():
     def toggle_overlay_visibility():
         if overlay.isVisible():
             overlay.hide()
+            toolbar.update_toggle_icon(False)
         else:
             overlay.showFullScreen()
+            toolbar.update_toggle_icon(True)
             toolbar.raise_()
 
     def close_start():
@@ -125,7 +128,7 @@ def main():
         # Hide UI
         menu.hide()
         toolbar.hide()
-        overlay.hide()
+        # overlay.hide() # Keep overlay visible for capture
         rec_selector.hide()
         QApplication.processEvents()
         import time 
@@ -147,7 +150,7 @@ def main():
         # Hide UI
         menu.hide()
         toolbar.hide()
-        overlay.hide()
+        # overlay.hide() # Keep overlay visible for recording
         QApplication.processEvents()
         
         # Save Dialog
