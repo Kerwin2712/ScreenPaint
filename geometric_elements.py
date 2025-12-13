@@ -349,21 +349,28 @@ class CircleObject(DrawingObject):
         pass
 
 class RectangleObject(DrawingObject):
-    def __init__(self, p1_obj, p2_obj, p3_obj, p4_obj, color=Qt.GlobalColor.yellow, width=3):
+    def __init__(self, p1_obj, p2_obj, p3_obj, p4_obj, color=Qt.GlobalColor.yellow, width=3, filled=False):
         # Points should be ordered usually? Or just 4 points.
         # Let's assume they are passed in order: TopLeft, TopRight, BottomRight, BottomLeft
         # Or just 4 corners in any cyclic order.
         self.points = [p1_obj, p2_obj, p3_obj, p4_obj]
         self.color = color
         self.width = width
+        self.filled = filled
     
     def draw(self, painter, overlay_rect=None):
         painter.setPen(QPen(self.color, self.width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         
+        if self.filled:
+            painter.setBrush(self.color)
+        else:
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+        
         # Draw 4 segments
         pts = [p.pos() for p in self.points]
-        for i in range(4):
-            painter.drawLine(pts[i], pts[(i+1)%4])
+        
+        # Draw Polygon for filled shape
+        painter.drawPolygon(pts)
 
     def contains(self, point):
         # Check distance to each of the 4 segments

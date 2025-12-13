@@ -137,6 +137,11 @@ class TransparentOverlay(QWidget):
         self.currentTool = 'rectangle'
         self.pending_p1 = None
         self._reset_tool_state()
+
+    def set_tool_rectangle_filled(self):
+        self.currentTool = 'rectangle_filled'
+        self.pending_p1 = None
+        self._reset_tool_state()
         
     def set_tool_paint(self):
         # Open Color Dialog immediately when tool is selected
@@ -230,11 +235,17 @@ class TransparentOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
+        rect = self.rect()
+        
+        # 0. Draw Rectangles (Background)
+        for obj in self.objects:
+            if isinstance(obj, RectangleObject):
+                obj.draw(painter, rect)
+
         # 1. Draw Freehand Layer
         painter.drawPixmap(0, 0, self.image)
         
         # 2. Draw Objects
-        rect = self.rect()
         
         # Draw Lines
         for obj in self.objects:
@@ -249,11 +260,6 @@ class TransparentOverlay(QWidget):
         # Draw Points
         for obj in self.objects:
             if isinstance(obj, PointObject):
-                obj.draw(painter, rect)
-        
-        # Draw Rectangles
-        for obj in self.objects:
-            if isinstance(obj, RectangleObject):
                 obj.draw(painter, rect)
             
         # 3. Draw Preview
@@ -275,7 +281,7 @@ class TransparentOverlay(QWidget):
             self._draw_circle_preview(painter)
         elif self.pending_p1 and self.currentTool in ['segment', 'ray', 'line']:
             self._draw_line_preview(painter)
-        elif self.pending_p1 and self.currentTool == 'rectangle':
+        elif self.pending_p1 and self.currentTool in ['rectangle', 'rectangle_filled']:
             self._draw_rect_preview(painter)
 
     def _draw_pp_preview(self, painter):
@@ -307,7 +313,8 @@ class TransparentOverlay(QWidget):
         p2 = PointObject(x3, y1, 0, size=0)
         p4 = PointObject(x1, y3, 0, size=0)
         
-        temp_rect = RectangleObject(p1, p2, p3, p4, self.brushColor, self.brushSize)
+        filled = (self.currentTool == 'rectangle_filled')
+        temp_rect = RectangleObject(p1, p2, p3, p4, self.brushColor, self.brushSize, filled=filled)
         temp_rect.draw(painter, self.rect())
 
     def _draw_circle_preview(self, painter):
@@ -508,7 +515,7 @@ class TransparentOverlay(QWidget):
                         self._create_line_object(self.pending_p1, hit_p)
                         self.pending_p1 = None
                 return
-                    
+            
             if self.currentTool == 'capture_crop':
                 if not self.pending_p1:
                     self.pending_p1 = PointObject(pos.x(), pos.y(), 0, size=0)
@@ -521,7 +528,7 @@ class TransparentOverlay(QWidget):
                     self.update()
                 return
 
-            if self.currentTool == 'rectangle':
+            if self.currentTool in ['rectangle', 'rectangle_filled']:
                 # Similar logic to lines: Drag or Click-Click
                 self.press_pos = pos
                 hit_p = self._get_point_at(pos)
@@ -530,7 +537,7 @@ class TransparentOverlay(QWidget):
                 if not self.pending_p1:
                     self.pending_p1 = hit_p
                 else:
-                    self._create_rectangle(self.pending_p1, hit_p)
+                    self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'))
                 return
             
             if self.currentTool == 'pen':
@@ -570,10 +577,9 @@ class TransparentOverlay(QWidget):
                     if not hit_p: hit_p = self._create_point(pos)
                     
                     self._create_line_object(self.pending_p1, hit_p)
-                    self._create_line_object(self.pending_p1, hit_p)
                     self.pending_p1 = None
 
-            if self.currentTool == 'rectangle' and self.pending_p1 and self.press_pos:
+            if self.currentTool in ['rectangle', 'rectangle_filled'] and self.pending_p1 and self.press_pos:
                 drag_threshold = 5
                 dist = (pos - self.press_pos).manhattanLength()
                 
@@ -581,7 +587,7 @@ class TransparentOverlay(QWidget):
                     hit_p = self._get_point_at(pos)
                     if not hit_p: hit_p = self._create_point(pos)
                     
-                    self._create_rectangle(self.pending_p1, hit_p)
+                    self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'))
 
             if self.currentTool == 'capture_crop':
                 if self.pending_p1:
@@ -683,7 +689,9 @@ class TransparentOverlay(QWidget):
         painter.end()
         self.update()
 
-    def _create_rectangle(self, p1_obj, p3_obj):
+        self.update()
+
+    def _create_rectangle(self, p1_obj, p3_obj, filled=False):
         # p1 is TopLeft(ish), p3 is BottomRight(ish) - Diagrammatically
         # We need p2 and p4
         # p1 = (x1, y1), p3 = (x3, y3)
@@ -709,7 +717,7 @@ class TransparentOverlay(QWidget):
         
         # Order: p1, p2, p3, p4
         self.save_state()
-        new_rect = RectangleObject(p1_obj, p2_obj, p3_obj, p4_obj)
+        new_rect = RectangleObject(p1_obj, p2_obj, p3_obj, p4_obj, color=self.brushColor, width=self.brushSize, filled=filled)
         self.objects.append(new_rect)
         self.pending_p1 = None
         self.update()

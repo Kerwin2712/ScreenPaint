@@ -125,7 +125,10 @@ def main():
     # Object Tools
     toolbar.tool_point.connect(overlay.set_tool_point)
     toolbar.tool_hand.connect(overlay.set_tool_hand)
+    toolbar.tool_point.connect(overlay.set_tool_point)
+    toolbar.tool_hand.connect(overlay.set_tool_hand)
     toolbar.tool_rectangle.connect(overlay.set_tool_rectangle)
+    toolbar.tool_rectangle_filled.connect(overlay.set_tool_rectangle_filled)
     toolbar.tool_paint.connect(overlay.set_tool_paint)
     
     # Camera Tools Handlers

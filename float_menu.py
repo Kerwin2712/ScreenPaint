@@ -102,6 +102,7 @@ class Toolbar(QWidget):
     tool_paint = pyqtSignal() # Paint Bucket
     tool_rectangle = pyqtSignal()
     tool_rectangle = pyqtSignal()
+    tool_rectangle_filled = pyqtSignal()
     # Signals for Camera
     tool_capture_full = pyqtSignal()
     tool_capture_crop = pyqtSignal()
@@ -304,6 +305,10 @@ class Toolbar(QWidget):
         action_rect = QAction("Rectángulo", self)
         action_rect.triggered.connect(self.tool_rectangle.emit)
         self.rect_menu.addAction(action_rect)
+
+        action_rect_filled = QAction("Rectángulo Relleno", self)
+        action_rect_filled.triggered.connect(self.tool_rectangle_filled.emit)
+        self.rect_menu.addAction(action_rect_filled)
         
         self.btn_rect.setMenu(self.rect_menu)
         layout.addWidget(self.btn_rect)
