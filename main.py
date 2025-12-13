@@ -1,6 +1,8 @@
 import sys
+import time
 from PyQt6.QtWidgets import QApplication, QBoxLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QObject, QEvent
+from globalkeyfilter import GlobalKeyFilter
 from float_menu import FloatingMenu, Toolbar
 from transparent_overlay import TransparentOverlay
 from recording_overlay import ResizableRubberBand
@@ -91,6 +93,15 @@ def main():
 
     def close_start():
         app.quit()
+
+    def reset_menu_position():
+        menu.move(100, 100)
+        menu.show()
+        menu.raise_()
+
+    # Install Global Key Filter
+    key_filter = GlobalKeyFilter(reset_menu_position)
+    app.installEventFilter(key_filter)
 
     # Connections
     menu.clicked.connect(show_tools)
