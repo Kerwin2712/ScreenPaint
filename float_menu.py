@@ -349,15 +349,6 @@ class Toolbar(QWidget):
         self.btn_cam.setMenu(self.cam_menu)
         self.btn_cam.installEventFilter(self)
         
-        self.btn_cam.setMenu(self.cam_menu)
-        self.btn_cam.installEventFilter(self)
-        
-        # ... (existing signals) ...
-
-        act_rec_crop = QAction("Grabar Recorte", self)
-        act_rec_crop.triggered.connect(self.tool_record_crop.emit)
-        self.cam_menu.addAction(act_rec_crop)
-        
         self.cam_menu.addSeparator()
         
         # Audio Toggle
