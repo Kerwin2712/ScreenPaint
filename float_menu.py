@@ -111,7 +111,11 @@ class Toolbar(QWidget):
 
     # Signals for Undo/Redo
     tool_undo = pyqtSignal()
+    tool_undo = pyqtSignal()
     tool_redo = pyqtSignal()
+    
+    # Audio Signal
+    tool_toggle_audio = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
@@ -341,6 +345,27 @@ class Toolbar(QWidget):
         act_rec_crop = QAction("Grabar Recorte", self)
         act_rec_crop.triggered.connect(self.tool_record_crop.emit)
         self.cam_menu.addAction(act_rec_crop)
+        
+        self.btn_cam.setMenu(self.cam_menu)
+        self.btn_cam.installEventFilter(self)
+        
+        self.btn_cam.setMenu(self.cam_menu)
+        self.btn_cam.installEventFilter(self)
+        
+        # ... (existing signals) ...
+
+        act_rec_crop = QAction("Grabar Recorte", self)
+        act_rec_crop.triggered.connect(self.tool_record_crop.emit)
+        self.cam_menu.addAction(act_rec_crop)
+        
+        self.cam_menu.addSeparator()
+        
+        # Audio Toggle
+        self.act_audio = QAction("Grabar Audio", self)
+        self.act_audio.setCheckable(True)
+        self.act_audio.setChecked(False) 
+        self.act_audio.toggled.connect(self.tool_toggle_audio.emit)
+        self.cam_menu.addAction(self.act_audio)
         
         self.btn_cam.setMenu(self.cam_menu)
         self.btn_cam.installEventFilter(self)

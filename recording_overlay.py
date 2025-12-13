@@ -24,6 +24,7 @@ class ResizableRubberBand(QWidget):
         self.is_resizing = False
         self.resize_edge = None
         self.drag_start_pos = QPoint()
+        self.audio_enabled = False
         
         # Border style
         self.border_color = QColor(255, 0, 0)
@@ -273,12 +274,12 @@ class ResizableRubberBand(QWidget):
 
     def start_recording(self):
         if not self.recorder:
-            fname, _ = QFileDialog.getSaveFileName(self, "Guardar Video", "", "AVI Files (*.avi)")
+            fname, _ = QFileDialog.getSaveFileName(self, "Guardar Video", "", "Video Files (*.mp4)")
             if not fname: return
-            if not fname.endswith('.avi'): fname += '.avi'
+            if not fname.endswith('.mp4'): fname += '.mp4'
             
             # Use Dynamic Geometry Source
-            self.recorder = ScreenRecorder(geometry_source=self.get_capture_rect, output_filename=fname)
+            self.recorder = ScreenRecorder(geometry_source=self.get_capture_rect, output_filename=fname, audio_enabled=self.audio_enabled)
             self.recorder.recording_stopped.connect(self.on_recording_finished)
             self.recorder.start()
             

@@ -183,9 +183,9 @@ def main():
         QApplication.processEvents()
         
         # Save Dialog
-        fname, _ = QFileDialog.getSaveFileName(None, "Grabar Video", "", "AVI Files (*.avi)")
+        fname, _ = QFileDialog.getSaveFileName(None, "Grabar Video", "", "Video Files (*.mp4)")
         if fname:
-            if not fname.endswith('.avi'): fname += '.avi'
+            if not fname.endswith('.mp4'): fname += '.mp4'
             # We need a way to STOP full screen recording. 
             # This implies we need a small floating "Stop" button or hotkey.
             # OR we just show the menu/rec_selector in "minimized" state?
@@ -213,9 +213,14 @@ def main():
         geo = app.primaryScreen().geometry()
         rec_selector.show()
         rec_selector.setGeometry(geo)
-        # Auto start? Maybe let user click record.
-    
+        # Force Full Screen visual cues if needed?
+        
     toolbar.tool_record_full.connect(open_rec_full)
+    
+    def toggle_audio_state(enabled):
+        rec_selector.audio_enabled = enabled
+        
+    toolbar.tool_toggle_audio.connect(toggle_audio_state)
     
     def open_rec_crop():
         rec_selector.show()
