@@ -76,7 +76,7 @@ class FloatingMenu(QWidget):
         return super().eventFilter(source, event)
 
 class Toolbar(QWidget):
-    toggle_overlay = pyqtSignal()
+
     hide_toolbar = pyqtSignal()
     close_app = pyqtSignal()
     # New signals for tools
@@ -128,7 +128,20 @@ class Toolbar(QWidget):
         
         # Dragging state
         self.dragging = False
+        self.grip_dragging = False
         self.offset = QPoint()
+        # Dragging state
+        self.dragging = False
+        self.grip_dragging = False
+        self.offset = QPoint()
+        self.grip_start_pos = QPoint()
+
+        # Menu Timer
+        self.active_menu = None
+        self.hide_timer = QTimer()
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.setInterval(200) # 200ms delay before hiding
+        self.hide_timer.timeout.connect(self.hide_active_menu)
         
         layout = QHBoxLayout()
         # Add some margin so there's space to grab if needed, or tight pack with handle
@@ -165,22 +178,9 @@ class Toolbar(QWidget):
                 color: white;
             }
         """)
-        self.label_grip.setToolTip("Arrastrar para mover")
+        self.label_grip.setToolTip("Arrastrar para mover. Clic para ocultar.")
+        self.label_grip.installEventFilter(self)
         layout.addWidget(self.label_grip)
-
-        # Hide Toolbar Button (Moved here)
-        self.btn_hide = QPushButton("-")
-        self.btn_hide.setToolTip("Ocultar Barra")
-        self.btn_hide.setStyleSheet(btn_style)
-        self.btn_hide.clicked.connect(self.hide_toolbar.emit)
-        layout.addWidget(self.btn_hide)
-
-        # Toggle Overlay Button
-        self.btn_toggle = QPushButton("👁️")
-        self.btn_toggle.setToolTip("Mostrar/Ocultar Overlay")
-        self.btn_toggle.setStyleSheet(btn_style)
-        self.btn_toggle.clicked.connect(self.toggle_overlay.emit)
-        layout.addWidget(self.btn_toggle)
 
         # Pen Button
         self.btn_pen = QPushButton("✏️")
@@ -244,6 +244,7 @@ class Toolbar(QWidget):
 
         # Set Menu via built-in setMenu logic (though we trigger it on hover)
         self.btn_line.setMenu(self.line_menu)
+        self.line_menu.installEventFilter(self)
         
         # Circle Tool Button with Menu
         self.btn_circle = QPushButton("⭕")
@@ -279,7 +280,7 @@ class Toolbar(QWidget):
         self.circle_menu.addAction(action_compass)
         
         self.btn_circle.setMenu(self.circle_menu)
-        self.btn_circle.setMenu(self.circle_menu)
+        self.circle_menu.installEventFilter(self)
         layout.addWidget(self.btn_circle)
 
         # Hook up hover for Circle menu too
@@ -315,6 +316,7 @@ class Toolbar(QWidget):
         self.rect_menu.addAction(action_rect_filled)
         
         self.btn_rect.setMenu(self.rect_menu)
+        self.rect_menu.installEventFilter(self)
         layout.addWidget(self.btn_rect)
 
         # Hook up hover
@@ -347,8 +349,7 @@ class Toolbar(QWidget):
         self.cam_menu.addAction(act_rec_crop)
         
         self.btn_cam.setMenu(self.cam_menu)
-        self.btn_cam.installEventFilter(self)
-        
+
         self.cam_menu.addSeparator()
         
         # Audio Toggle
@@ -357,8 +358,8 @@ class Toolbar(QWidget):
         self.act_audio.setChecked(True) 
         self.act_audio.toggled.connect(self.tool_toggle_audio.emit)
         self.cam_menu.addAction(self.act_audio)
-        
-        self.btn_cam.setMenu(self.cam_menu)
+
+        self.cam_menu.installEventFilter(self)
         self.btn_cam.installEventFilter(self)
         
         layout.addWidget(self.btn_cam)
@@ -439,13 +440,10 @@ class Toolbar(QWidget):
         self.btn_close.clicked.connect(self.close_app.emit)
         layout.addWidget(self.btn_close)
 
-    def update_toggle_icon(self, is_visible):
-        if is_visible:
-            self.btn_toggle.setText("🐵")
-            self.btn_toggle.setToolTip("Ocultar Lienzo")
-        else:
-            self.btn_toggle.setText("🙈")
-            self.btn_toggle.setToolTip("Mostrar Lienzo")
+    def hide_active_menu(self):
+        if self.active_menu:
+            self.active_menu.hide()
+            self.active_menu = None
 
     def set_layout_rtl(self, is_rtl):
         direction = QBoxLayout.Direction.RightToLeft if is_rtl else QBoxLayout.Direction.LeftToRight
@@ -454,7 +452,28 @@ class Toolbar(QWidget):
         self.layout().update()
 
     def eventFilter(self, source, event):
-        if event.type() == event.Type.Enter:
+        if source == self.label_grip:
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self.grip_dragging = True
+                    self.grip_start_pos = event.globalPosition().toPoint()
+                    self.offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                    return True
+            elif event.type() == QEvent.Type.MouseMove:
+                if self.grip_dragging and (event.buttons() & Qt.MouseButton.LeftButton):
+                    self.move(event.globalPosition().toPoint() - self.offset)
+                    return True
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if self.grip_dragging:
+                    # Check if it was a click (minimal movement)
+                    if (event.globalPosition().toPoint() - self.grip_start_pos).manhattanLength() < 5:
+                        self.hide_toolbar.emit()
+                    self.grip_dragging = False
+                    return True
+
+        if event.type() == QEvent.Type.Enter:
+            self.hide_timer.stop() # Stop hiding if re-entered
+            
             if source == self.btn_line:
                 self.show_menu(self.btn_line, self.line_menu)
                 return True
@@ -467,6 +486,15 @@ class Toolbar(QWidget):
             elif source == self.btn_cam:
                 self.show_menu(self.btn_cam, self.cam_menu)
                 return True
+            elif isinstance(source, QMenu):
+                # Hovering the menu itself, keep it open
+                return False
+
+        elif event.type() == QEvent.Type.Leave:
+            # If leaving a button or menu, start timer to hide
+            if source in [self.btn_line, self.btn_circle, self.btn_rect, self.btn_cam] or isinstance(source, QMenu):
+                self.hide_timer.start()
+
         return super().eventFilter(source, event)
 
     def show_menu(self, button, menu):
@@ -486,7 +514,12 @@ class Toolbar(QWidget):
             # Show above
             pos = global_pos - QPoint(0, menu_height)
             
-        menu.exec(pos)
+
+            
+        # Use popup instead of exec for non-blocking behavior
+        self.active_menu = menu
+        self.hide_timer.stop() # Ensure we don't hide immediately
+        menu.popup(pos)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

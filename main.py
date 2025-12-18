@@ -58,8 +58,8 @@ def main():
             new_x = menu.x() + menu.width() - toolbar.width()
             toolbar.move(new_x, menu.y())
 
-        overlay.hide()
-        toolbar.update_toggle_icon(False) # Ensure icon is correct (Closed)
+        overlay.showFullScreen() # Show Overlay when menu opens
+        # toolbar.update_toggle_icon(False) # Removed since button is gone
         toolbar.show()
         toolbar.raise_()
 
@@ -69,6 +69,7 @@ def main():
         is_rtl = toolbar.layout().direction() == QBoxLayout.Direction.RightToLeft
         
         toolbar.hide()
+        overlay.hide() # Hide Overlay when closing toolbar
         
         if is_rtl:
             # Anchor is at Top-Right. Align Menu Top-Right to Toolbar Top-Right.
@@ -80,16 +81,6 @@ def main():
             
         menu.show()
         menu.raise_()
-        
-
-    def toggle_overlay_visibility():
-        if overlay.isVisible():
-            overlay.hide()
-            toolbar.update_toggle_icon(False)
-        else:
-            overlay.showFullScreen()
-            toolbar.update_toggle_icon(True)
-            toolbar.raise_()
 
     def close_start():
         app.quit()
@@ -105,8 +96,7 @@ def main():
 
     # Connections
     menu.clicked.connect(show_tools)
-    
-    toolbar.toggle_overlay.connect(toggle_overlay_visibility)
+
     toolbar.hide_toolbar.connect(hide_tools)
     toolbar.close_app.connect(close_start)
     
