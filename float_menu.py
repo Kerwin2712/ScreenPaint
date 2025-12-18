@@ -471,6 +471,36 @@ class Toolbar(QWidget):
                     self.grip_dragging = False
                     return True
 
+        if event.type() == QEvent.Type.MouseMove or event.type() == QEvent.Type.Enter:
+            # Global check for hovering over buttons when a menu is open
+            # This is needed because QMenu might grab mouse events, preventing Enter events on buttons
+            if self.active_menu and self.active_menu.isVisible():
+                global_pos = QCursor.pos()
+                
+                # Check Line Button
+                if self.btn_line.rect().contains(self.btn_line.mapFromGlobal(global_pos)):
+                    if self.active_menu != self.line_menu:
+                        self.show_menu(self.btn_line, self.line_menu)
+                        return True
+                
+                # Check Circle Button
+                elif self.btn_circle.rect().contains(self.btn_circle.mapFromGlobal(global_pos)):
+                    if self.active_menu != self.circle_menu:
+                        self.show_menu(self.btn_circle, self.circle_menu)
+                        return True
+                        
+                # Check Rect Button
+                elif self.btn_rect.rect().contains(self.btn_rect.mapFromGlobal(global_pos)):
+                    if self.active_menu != self.rect_menu:
+                        self.show_menu(self.btn_rect, self.rect_menu)
+                        return True
+                        
+                # Check Cam Button
+                elif self.btn_cam.rect().contains(self.btn_cam.mapFromGlobal(global_pos)):
+                    if self.active_menu != self.cam_menu:
+                        self.show_menu(self.btn_cam, self.cam_menu)
+                        return True
+
         if event.type() == QEvent.Type.Enter:
             self.hide_timer.stop() # Stop hiding if re-entered
             
@@ -517,6 +547,9 @@ class Toolbar(QWidget):
 
             
         # Use popup instead of exec for non-blocking behavior
+        if self.active_menu and self.active_menu != menu:
+            self.active_menu.hide()
+            
         self.active_menu = menu
         self.hide_timer.stop() # Ensure we don't hide immediately
         menu.popup(pos)
