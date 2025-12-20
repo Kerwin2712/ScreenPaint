@@ -1,6 +1,6 @@
 import math
 from PyQt6.QtCore import Qt, QPoint, QRect
-from PyQt6.QtGui import QPainter, QPen, QColor, QFont
+from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QPolygon
 
 # --- Helper Functions ---
 def calculate_intersection(line1, line2):
@@ -446,6 +446,11 @@ class RectangleObject(DrawingObject):
         x0, y0 = pos.x(), pos.y()
         
         pts = [p.pos() for p in self.points]
+        
+        if self.filled:
+            poly = QPolygon(pts)
+            if poly.containsPoint(point, Qt.FillRule.OddEvenFill):
+                return True
         
         for i in range(4):
             p1 = pts[i]
