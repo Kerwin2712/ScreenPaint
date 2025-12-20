@@ -211,10 +211,15 @@ class Toolbar(QWidget):
         """)
         
         # Add Actions
+        action_point = QAction("Punto", self)
+        action_point.triggered.connect(self.tool_point.emit)
+        self.line_menu.addAction(action_point)
+        self.line_menu.addSeparator()
+        
         action_segment = QAction("Segmento", self)
         action_segment.triggered.connect(self.tool_line_segment.emit)
         self.line_menu.addAction(action_segment)
-        
+
         action_ray = QAction("Semirecta", self)
         action_ray.triggered.connect(self.tool_line_ray.emit)
         self.line_menu.addAction(action_ray)
@@ -246,49 +251,9 @@ class Toolbar(QWidget):
         self.btn_line.setMenu(self.line_menu)
         self.line_menu.installEventFilter(self)
         
-        # Circle Tool Button with Menu
-        self.btn_circle = QPushButton("⭕")
-        self.btn_circle.setToolTip("Herramientas de Círculo")
-        self.btn_circle.setStyleSheet(btn_style)
-        
-        # Create Circle Menu
-        self.circle_menu = QMenu(self)
-        self.circle_menu.setStyleSheet("""
-            QMenu {
-                background-color: #333333;
-                color: white;
-                border: 1px solid #555555;
-            }
-            QMenu::item {
-                padding: 5px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #444444;
-            }
-        """)
-        
-        action_radius = QAction("Centro y Radio", self)
-        action_radius.triggered.connect(self.tool_circle_radius.emit)
-        self.circle_menu.addAction(action_radius)
-        
-        action_center_point = QAction("Centro a Punto", self)
-        action_center_point.triggered.connect(self.tool_circle_center_point.emit)
-        self.circle_menu.addAction(action_center_point)
-        
-        action_compass = QAction("Compás", self)
-        action_compass.triggered.connect(self.tool_circle_compass.emit)
-        self.circle_menu.addAction(action_compass)
-        
-        self.btn_circle.setMenu(self.circle_menu)
-        self.circle_menu.installEventFilter(self)
-        layout.addWidget(self.btn_circle)
-
-        # Hook up hover for Circle menu too
-        self.btn_circle.installEventFilter(self)
-        
-        # Rectangle Tool Button
+        # Rectangle/Shape Tool Button
         self.btn_rect = QPushButton("🔳")
-        self.btn_rect.setToolTip("Rectángulo")
+        self.btn_rect.setToolTip("Figuras Geométricas")
         self.btn_rect.setStyleSheet(btn_style)
         
         # Create Rectangle Menu
@@ -314,6 +279,21 @@ class Toolbar(QWidget):
         action_rect_filled = QAction("Rectángulo Relleno", self)
         action_rect_filled.triggered.connect(self.tool_rectangle_filled.emit)
         self.rect_menu.addAction(action_rect_filled)
+        
+        self.rect_menu.addSeparator()
+        
+        # Add Circle Tools here
+        action_radius = QAction("Círculo (Centro y Radio)", self)
+        action_radius.triggered.connect(self.tool_circle_radius.emit)
+        self.rect_menu.addAction(action_radius)
+        
+        action_center_point = QAction("Círculo (Centro a Punto)", self)
+        action_center_point.triggered.connect(self.tool_circle_center_point.emit)
+        self.rect_menu.addAction(action_center_point)
+        
+        action_compass = QAction("Círculo (Compás)", self)
+        action_compass.triggered.connect(self.tool_circle_compass.emit)
+        self.rect_menu.addAction(action_compass)
         
         self.btn_rect.setMenu(self.rect_menu)
         self.rect_menu.installEventFilter(self)
@@ -363,22 +343,11 @@ class Toolbar(QWidget):
         self.btn_cam.installEventFilter(self)
         
         layout.addWidget(self.btn_cam)
-
-
-        # Hook up hover for Circle menu too
-        self.btn_circle.installEventFilter(self)
         
         # Install Event Filter to handle Hover
         self.btn_line.installEventFilter(self)
         
         layout.addWidget(self.btn_line)
-
-        # Point Button
-        self.btn_point = QPushButton("📍") # Or •
-        self.btn_point.setToolTip("Punto")
-        self.btn_point.setStyleSheet(btn_style)
-        self.btn_point.clicked.connect(self.tool_point.emit)
-        layout.addWidget(self.btn_point)
 
         # Move/Hand Button
         self.btn_hand = QPushButton("✋")
@@ -482,19 +451,11 @@ class Toolbar(QWidget):
                     if self.active_menu != self.line_menu:
                         self.show_menu(self.btn_line, self.line_menu)
                         return True
-                
-                # Check Circle Button
-                elif self.btn_circle.rect().contains(self.btn_circle.mapFromGlobal(global_pos)):
-                    if self.active_menu != self.circle_menu:
-                        self.show_menu(self.btn_circle, self.circle_menu)
-                        return True
-                        
                 # Check Rect Button
                 elif self.btn_rect.rect().contains(self.btn_rect.mapFromGlobal(global_pos)):
                     if self.active_menu != self.rect_menu:
                         self.show_menu(self.btn_rect, self.rect_menu)
                         return True
-                        
                 # Check Cam Button
                 elif self.btn_cam.rect().contains(self.btn_cam.mapFromGlobal(global_pos)):
                     if self.active_menu != self.cam_menu:
@@ -506,9 +467,6 @@ class Toolbar(QWidget):
             
             if source == self.btn_line:
                 self.show_menu(self.btn_line, self.line_menu)
-                return True
-            elif source == self.btn_circle:
-                self.show_menu(self.btn_circle, self.circle_menu)
                 return True
             elif source == self.btn_rect:
                 self.show_menu(self.btn_rect, self.rect_menu)
@@ -522,7 +480,7 @@ class Toolbar(QWidget):
 
         elif event.type() == QEvent.Type.Leave:
             # If leaving a button or menu, start timer to hide
-            if source in [self.btn_line, self.btn_circle, self.btn_rect, self.btn_cam] or isinstance(source, QMenu):
+            if source in [self.btn_line, self.btn_rect, self.btn_cam] or isinstance(source, QMenu):
                 self.hide_timer.start()
 
         return super().eventFilter(source, event)
