@@ -393,6 +393,7 @@ class TransparentOverlay(QWidget):
                     # Apply Color
                     self.save_state()
                     hit_obj.color = self.brushColor
+                    self._propagate_color_change(hit_obj)
                     self.update()
                 
                 # Do NOT open dialog on empty space click. 
@@ -564,6 +565,9 @@ class TransparentOverlay(QWidget):
                 dy = pos.y() - self.lastDragPoint.y()
                 self.draggingObject.move(dx, dy)
                 self.lastDragPoint = pos
+                # Check for rectangle constraints if moving a point
+                if isinstance(self.draggingObject, PointObject):
+                    self._enforce_rectangle_constraints(self.draggingObject)
                 self._propagate_changes()
                 self.update()
         else:
@@ -636,13 +640,44 @@ class TransparentOverlay(QWidget):
                         return QPoint(pt.x(), pt.y()), (l1, l2)
         return None, None
 
-    def _create_point(self, pos, parents=None):
+    def _create_point(self, pos, parents=None, color=None):
         self.save_state()
-        new_point = PointObject(pos.x(), pos.y(), self.pointIdCounter, parents=parents)
+        if color is None:
+            color = self.brushColor
+        new_point = PointObject(pos.x(), pos.y(), self.pointIdCounter, color=color, parents=parents)
         self.pointIdCounter += 1
         self.objects.append(new_point)
         self.update()
         return new_point
+
+    def _enforce_rectangle_constraints(self, moved_point):
+        for obj in self.objects:
+            if isinstance(obj, RectangleObject):
+                if moved_point in obj.points:
+                    idx = obj.points.index(moved_point)
+                    opp_idx = (idx + 2) % 4
+                    next_idx = (idx + 1) % 4
+                    prev_idx = (idx - 1) % 4
+                    
+                    opp_p = obj.points[opp_idx]
+                    next_p = obj.points[next_idx]
+                    prev_p = obj.points[prev_idx]
+                    
+                    # Logic assumes order P0(TL)->P1(TR)->P2(BR)->P3(BL) or similar cyclic
+                    if idx % 2 == 0: # Even (0 or 2)
+                        # Next shares Y with Moved, X with Opp
+                        next_p.y = moved_point.y
+                        next_p.x = opp_p.x
+                        # Prev shares X with Moved, Y with Opp
+                        prev_p.x = moved_point.x
+                        prev_p.y = opp_p.y
+                    else: # Odd (1 or 3)
+                        # Next shares X with Moved, Y with Opp
+                        next_p.x = moved_point.x
+                        next_p.y = opp_p.y
+                        # Prev shares Y with Moved, X with Opp
+                        prev_p.y = moved_point.y
+                        prev_p.x = opp_p.x
         
     def _create_line_object(self, p1_obj, p2_obj):
         self.save_state()
@@ -700,6 +735,12 @@ class TransparentOverlay(QWidget):
                         if p in current_removals:
                             final_removal.add(obj)
                             changed = True
+                elif isinstance(obj, PointObject):
+                     # Check if it belongs to a Rectangle that is being removed
+                     for rect in [r for r in current_removals if isinstance(r, RectangleObject)]:
+                         if obj in rect.points:
+                             final_removal.add(obj)
+                             changed = True
 
         self.objects = [obj for obj in self.objects if obj not in final_removal]
         self.update()
@@ -712,6 +753,19 @@ class TransparentOverlay(QWidget):
                 # We need to call update. PointObject.update() handles the logic check.
                 if hasattr(obj, 'update'):
                     obj.update()
+
+    def _propagate_color_change(self, source_obj):
+        if isinstance(source_obj, RectangleObject):
+            for p in source_obj.points:
+                p.color = source_obj.color
+        elif isinstance(source_obj, PointObject):
+            # Find rectangle
+            for obj in self.objects:
+                if isinstance(obj, RectangleObject) and source_obj in obj.points:
+                    obj.color = source_obj.color
+                    # Update all other points of this rect
+                    for p in obj.points:
+                        p.color = source_obj.color
 
     def _draw_freehand(self, currentPoint):
         painter = QPainter(self.image)

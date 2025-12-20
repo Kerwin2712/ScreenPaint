@@ -64,7 +64,7 @@ class DrawingObject:
         raise NotImplementedError
 
 class PointObject(DrawingObject):
-    def __init__(self, x, y, id_num, color=Qt.GlobalColor.red, size=10, parents=None):
+    def __init__(self, x, y, id_num, color=Qt.GlobalColor.red, size=3, parents=None):
         self.x = x
         self.y = y
         self.id = id_num
@@ -84,7 +84,7 @@ class PointObject(DrawingObject):
         font = painter.font()
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(QRect(self.x - self.size, self.y - self.size, self.size*2, self.size*2), Qt.AlignmentFlag.AlignCenter, str(self.id))
+        # painter.drawText(QRect(self.x - self.size, self.y - self.size, self.size*2, self.size*2), Qt.AlignmentFlag.AlignCenter, str(self.id))
         
     def contains(self, point):
         dx = point.x() - self.x
@@ -423,10 +423,13 @@ class RectangleObject(DrawingObject):
         self.filled = filled
     
     def draw(self, painter, overlay_rect=None):
-        painter.setPen(QPen(self.color, self.width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        pen_width = 1 if self.filled else self.width
+        painter.setPen(QPen(self.color, pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         
         if self.filled:
-            painter.setBrush(self.color)
+            fill_color = QColor(self.color)
+            fill_color.setAlpha(100) # Ajustar transparencia: 0 (invisible) a 255 (opaco)
+            painter.setBrush(fill_color)
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
         
