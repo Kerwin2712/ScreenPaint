@@ -1,5 +1,5 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer, QEvent
-from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout, QMenu
+from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout, QMenu, QToolTip
 from PyQt6.QtGui import QAction, QCursor
 
 
@@ -187,6 +187,7 @@ class Toolbar(QWidget):
         self.btn_pen.setToolTip("Lápiz")
         self.btn_pen.setStyleSheet(btn_style)
         self.btn_pen.clicked.connect(self.tool_pen.emit)
+        self.btn_pen.installEventFilter(self)
         layout.addWidget(self.btn_pen)
 
         # Line Tool Button with Menu
@@ -354,13 +355,15 @@ class Toolbar(QWidget):
         self.btn_hand.setToolTip("Mover Objetos")
         self.btn_hand.setStyleSheet(btn_style)
         self.btn_hand.clicked.connect(self.tool_hand.emit)
+        self.btn_hand.installEventFilter(self)
         layout.addWidget(self.btn_hand)
 
         # Paint Bucket Button
         self.btn_paint = QPushButton("🎨")
-        self.btn_paint.setToolTip("Cubo de Pintura (Color)")
+        self.btn_paint.setToolTip("Color")
         self.btn_paint.setStyleSheet(btn_style)
         self.btn_paint.clicked.connect(self.tool_paint.emit)
+        self.btn_paint.installEventFilter(self)
         layout.addWidget(self.btn_paint)
 
         # Undo/Redo Buttons (Before Eraser)
@@ -368,12 +371,14 @@ class Toolbar(QWidget):
         self.btn_undo.setToolTip("Deshacer")
         self.btn_undo.setStyleSheet(btn_style)
         self.btn_undo.clicked.connect(self.tool_undo.emit)
+        self.btn_undo.installEventFilter(self)
         layout.addWidget(self.btn_undo)
 
         self.btn_redo = QPushButton("↪️")
         self.btn_redo.setToolTip("Rehacer")
         self.btn_redo.setStyleSheet(btn_style)
         self.btn_redo.clicked.connect(self.tool_redo.emit)
+        self.btn_redo.installEventFilter(self)
         layout.addWidget(self.btn_redo)
 
         # Eraser Button
@@ -381,6 +386,7 @@ class Toolbar(QWidget):
         self.btn_eraser.setToolTip("Borrador")
         self.btn_eraser.setStyleSheet(btn_style)
         self.btn_eraser.clicked.connect(self.tool_eraser.emit)
+        self.btn_eraser.installEventFilter(self)
         layout.addWidget(self.btn_eraser)
 
         # Clear All Button
@@ -388,6 +394,7 @@ class Toolbar(QWidget):
         self.btn_clear.setToolTip("Limpiar Todo")
         self.btn_clear.setStyleSheet(btn_style)
         self.btn_clear.clicked.connect(self.tool_clear.emit)
+        self.btn_clear.installEventFilter(self)
         layout.addWidget(self.btn_clear)
 
         # Close App Button
@@ -407,6 +414,7 @@ class Toolbar(QWidget):
             }
         """)
         self.btn_close.clicked.connect(self.close_app.emit)
+        self.btn_close.installEventFilter(self)
         layout.addWidget(self.btn_close)
 
     def hide_active_menu(self):
@@ -464,6 +472,9 @@ class Toolbar(QWidget):
 
         if event.type() == QEvent.Type.Enter:
             self.hide_timer.stop() # Stop hiding if re-entered
+            
+            if isinstance(source, QPushButton):
+                QToolTip.showText(QCursor.pos(), source.toolTip(), source)
             
             if source == self.btn_line:
                 self.show_menu(self.btn_line, self.line_menu)
