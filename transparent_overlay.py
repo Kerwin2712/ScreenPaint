@@ -401,9 +401,9 @@ class TransparentOverlay(QWidget):
                 # User can click the toolbar button again to change color.
                 return
             
-            # Circle Tools
+                # Circle Tools
             if self.currentTool == 'circle_radius':
-                center = self._create_point(pos)
+                center = self._create_point(pos, save_history=True)
                 
                 # Use None as parent to be independent window
                 # Ensure it is top-most
@@ -415,9 +415,6 @@ class TransparentOverlay(QWidget):
                 dialog.setDoubleMaximum(1000)
                 dialog.setDoubleDecimals(1)
                 # Force strictly on top
-                dialog.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-                # Re-add frame hint if we want title bar, but maybe Frameless is safer if we want to ensure it pops over? 
-                # Actually, standard Dialog title bar is fine.
                 dialog.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Dialog)
                 
                 dialog.resize(300, 150)
@@ -426,9 +423,9 @@ class TransparentOverlay(QWidget):
                 dialog.move(QCursor.pos())
 
                 if dialog.exec():
-                    self.save_state()
+                    # Do NOT save state here, we append to the state created by the point
                     radius = dialog.doubleValue()
-                    circle = CircleObject(center, radius, 'radius_num')
+                    circle = CircleObject(center, radius, 'radius_num', color=self.brushColor, width=self.brushSize)
                     self.objects.append(circle)
                     self.update()
                 
@@ -438,14 +435,24 @@ class TransparentOverlay(QWidget):
 
             if self.currentTool == 'circle_center_point':
                 hit_p = self._get_point_at(pos)
-                if not hit_p:
-                    hit_p = self._create_point(pos)
-                    
+                
                 if not self.pending_p1:
+                    if not hit_p:
+                        hit_p = self._create_point(pos, save_history=True)
+                        self.pending_p1_created = True
+                    else:
+                        self.pending_p1_created = False
                     self.pending_p1 = hit_p
                 else:
-                    self.save_state()
-                    circle = CircleObject(self.pending_p1, hit_p, 'center_point')
+                    should_save = not self.pending_p1_created
+                    if not hit_p:
+                        hit_p = self._create_point(pos, save_history=should_save)
+                        circle_save = False
+                    else:
+                        circle_save = should_save
+                        
+                    if circle_save: self.save_state()
+                    circle = CircleObject(self.pending_p1, hit_p, 'center_point', color=self.brushColor, width=self.brushSize)
                     self.objects.append(circle)
                     self.pending_p1 = None
                     self.update()
@@ -453,17 +460,146 @@ class TransparentOverlay(QWidget):
 
             if self.currentTool == 'circle_compass':
                 hit_p = self._get_point_at(pos)
+                
+                # Logic: P1 (Save) -> P2 (No Save) -> P3 (No Save) + Circle (No Save)
+                # Or P1 (Exists) -> ...
+                
+                save_this_step = False
+                
                 if not hit_p:
-                    hit_p = self._create_point(pos)
+                    if len(self.compass_pts) == 0:
+                        save_this_step = True # First point of the sequence
+                    else:
+                        save_this_step = False # Included in first point's history
+                    
+                    hit_p = self._create_point(pos, save_history=save_this_step)
+                else:
+                    # User clicked existing point
+                    # If it's the first point of compass, we don't save history for the POINT, 
+                    # but we haven't started a "transaction" if we just clicked an existing point.
+                    # So dragging a compass from existing points might need its own save?
+                    # Let's simplify: If we click existing point, we don't create new history entry YET.
+                    # But if we complete the compass, we must ensure ONE history entry exists.
+                    pass
 
                 if len(self.compass_pts) < 2:
                     self.compass_pts.append(hit_p)
                 else:
                     # Center
-                    self.save_state()
-                    circle = CircleObject(hit_p, (self.compass_pts[0], self.compass_pts[1]), 'compass')
+                    should_save = True
+                    # If P1 or P2 were newly created, we reused their history.
+                    # Ideally we want 1 entry. 
+                    # If we created P1? Yes.
+                    # IF we reused P1 and P2? Then we need to save now.
+                    # Simpler heuristic: If objects changed since start of compass?
+                    # Let's just FORCE save if we didn't just create a point with save=True.
+                    # But verifying that is hard. 
+                    # Let's use save_history=False for P3 (if created) effectively merging.
+                    # If P3 was created, it "took" the history slot if we passed Save=False? No, create_point(False) appends to current.
+                    
+                    # We need to Ensure a Save happens if one hasn't happened yet.
+                    # Let's assume P1 Creation triggers Save.
+                    # If P1 existed, no Save.
+                    # If P2 created? Save=False (merges).
+                    # If P2 existed?
+                    # If P3 created? Save=False.
+                    
+                    # WE ONLY need to explicitly save if ALL previous points were EXISTING points.
+                    # How to track?
+                    # Let's add a `compass_started_transaction` flag?
+                    # Or just simple approach:
+                    # If we create the Compass, we just call save_state() if we haven't modified objects list in this "action".
+                    # But create_point modifies objects.
+                    
+                    # Robust approach: Always save at the END (Circle creation), and ensure intermediate points DID NOT save.
+                    # P1: create(save=False).
+                    # P2: create(save=False).
+                    # P3: create(save=False).
+                    # Circle: save=True.
+                    # BUT: If user Undo after P1? They see nothing happened? That's weird. They should see P1.
+                    # So P1 must save.
+                    
+                    # OK: P1 saves.
+                    # P2 merges.
+                    # P3 merges.
+                    # Circle merges.
+                    # If P1 was existing: P2 saves? 
+                    # If P2 was existing: P3/Circle saves?
+                    
+                    # This implies state machine.
+                    # Let's stick to: P1 creates History if new.
+                    # If P1 existing, P2 creates History if new.
+                    # If P2 existing, P3/Circle create History.
+                    
+                    # Determining if we SHOULD save for Circle:
+                    # Check if we ALREADY pushed to history for this interaction? hard.
+                    # Use a flag on logical state?
+                    pass # Handled below
+
+                    # Simplified Compass Logic for Unity
+                    # If P3 is new, create it merging with previous.
+                    # Circle merges with previous.
+                    # BUT if P3 is existing, and P1/P2 were existing, we MUST save now.
+                    
+                    # Hack: Compare object count or use previous Save logic?
+                    # Actually, since Compass involves distinct clicks, the user sees them as steps.
+                    # Maybe it is OK if they are 3 Undo steps? 
+                    # User request: "Group Undo Actions for Circle creation".
+                    # So it SHOULD be 1 step.
+                    
+                    # Solution:
+                    # On P1 click: If New, Save=True. Flag transaction_active=True.
+                    # If Existing, transaction_active=False.
+                    
+                    # On P2 click: If New, Save=(not transaction_active). If saves, transaction_active=True.
+                    
+                    # On P3 click: If New, Save=(not transaction_active). If saves, transaction_active=True.
+                    # Circle: Save=(not transaction_active).
+                    
+                    # Wait, where do we store `transaction_active` for Compass?
+                    # `self.compass_pts` implies we are in compass mode.
+                    # Add `self.compass_transaction_active` to class.
+                    
+                    if not self.compass_pts: # Start
+                        self.compass_transaction_active = False
+
+                    # P1 Logic handled above?
+                    # We need to override the logic inside this block slightly.
+                    pass
+            
+            if self.currentTool == 'circle_compass':
+                hit_p = self._get_point_at(pos)
+                
+                # Determine if we are starting a sequence
+                if len(self.compass_pts) == 0:
+                    self.compass_transaction_active = False
+                
+                save_point = False
+                if not hit_p:
+                    # Attempting to create new point.
+                    # Save only if we haven't already started a transaction
+                    if not self.compass_transaction_active:
+                        save_point = True
+                        self.compass_transaction_active = True
+                    hit_p = self._create_point(pos, save_history=save_point)
+                
+                if len(self.compass_pts) < 2:
+                    self.compass_pts.append(hit_p)
+                else:
+                    # Center (P3)
+                    # We already tried creating P3 above (hit_p).
+                    
+                    # Now create Circle
+                    save_circle = False
+                    if not self.compass_transaction_active:
+                        save_circle = True
+                        
+                    if save_circle: self.save_state()
+                    
+                    circle = CircleObject(hit_p, (self.compass_pts[0], self.compass_pts[1]), 'compass', color=self.brushColor, width=self.brushSize)
                     self.objects.append(circle)
                     self.compass_pts = [] # Reset
+                    self.compass_transaction_active = False # Reset
                     self.update()
                 return
 
@@ -762,9 +898,48 @@ class TransparentOverlay(QWidget):
                     # Compass list
                     if isinstance(obj.radius_param, tuple): 
                         if obj.radius_param[0] in current_removals or obj.radius_param[1] in current_removals:
-
                             final_removal.add(obj)
                             changed = True
+                    # Also remove points if Circle is removed?
+                    if obj in current_removals:
+                        final_removal.add(obj.center_obj)
+                        if isinstance(obj.radius_param, PointObject):
+                            final_removal.add(obj.radius_param)
+                        if isinstance(obj.radius_param, tuple):
+                            final_removal.add(obj.radius_param[0])
+                            final_removal.add(obj.radius_param[1])
+                    # Also remove points if Circle is removed?
+                    if obj in current_removals:
+                        final_removal.add(obj.center_obj)
+                        if isinstance(obj.radius_param, PointObject):
+                            final_removal.add(obj.radius_param)
+                        if isinstance(obj.radius_param, tuple):
+                            final_removal.add(obj.radius_param[0])
+                            final_removal.add(obj.radius_param[1])
+                            
+                elif isinstance(obj, RectangleObject):
+                    for p in obj.points:
+                        if p in current_removals:
+                            final_removal.add(obj)
+                            changed = True
+                elif isinstance(obj, PointObject):
+                    # Check if it belongs to a Rectangle that is being removed
+                    for rect in [r for r in current_removals if isinstance(r, RectangleObject)]:
+                        if obj in rect.points:
+                            final_removal.add(obj)
+                            changed = True
+                    # Check Circle dependencies for Points
+                    for circ in [c for c in current_removals if isinstance(c, CircleObject)]:
+                        if circ.center_obj == obj:
+                            final_removal.add(obj)
+                            changed = True
+                        if isinstance(circ.radius_param, PointObject) and circ.radius_param == obj:
+                            final_removal.add(obj)
+                            changed = True
+                        if isinstance(circ.radius_param, tuple) and obj in circ.radius_param:
+                            final_removal.add(obj)
+                            changed = True
+                            
                 elif isinstance(obj, RectangleObject):
                     for p in obj.points:
                         if p in current_removals:
@@ -793,6 +968,14 @@ class TransparentOverlay(QWidget):
         if isinstance(source_obj, RectangleObject):
             for p in source_obj.points:
                 p.color = source_obj.color
+        elif isinstance(source_obj, CircleObject):
+            source_obj.center_obj.color = source_obj.color
+            if isinstance(source_obj.radius_param, PointObject):
+                source_obj.radius_param.color = source_obj.color
+            elif isinstance(source_obj.radius_param, tuple):
+                source_obj.radius_param[0].color = source_obj.color
+                source_obj.radius_param[1].color = source_obj.color
+
         elif isinstance(source_obj, PointObject):
             # Find rectangle
             for obj in self.objects:
@@ -801,6 +984,38 @@ class TransparentOverlay(QWidget):
                     # Update all other points of this rect
                     for p in obj.points:
                         p.color = source_obj.color
+                elif isinstance(obj, CircleObject):
+                    # Check if point belongs to circle
+                    is_part = False
+                    if obj.center_obj == source_obj: is_part = True
+                    if isinstance(obj.radius_param, PointObject) and obj.radius_param == source_obj: is_part = True
+                    if isinstance(obj.radius_param, tuple) and source_obj in obj.radius_param: is_part = True
+                    
+                    if is_part:
+                        obj.color = source_obj.color
+                        # Propagate to other circle parts
+                        obj.center_obj.color = source_obj.color
+                        if isinstance(obj.radius_param, PointObject):
+                            obj.radius_param.color = source_obj.color
+                        elif isinstance(obj.radius_param, tuple):
+                            obj.radius_param[0].color = source_obj.color
+                            obj.radius_param[1].color = source_obj.color
+                elif isinstance(obj, CircleObject):
+                    # Check if point belongs to circle
+                    is_part = False
+                    if obj.center_obj == source_obj: is_part = True
+                    if isinstance(obj.radius_param, PointObject) and obj.radius_param == source_obj: is_part = True
+                    if isinstance(obj.radius_param, tuple) and source_obj in obj.radius_param: is_part = True
+                    
+                    if is_part:
+                        obj.color = source_obj.color
+                        # Propagate to other circle parts
+                        obj.center_obj.color = source_obj.color
+                        if isinstance(obj.radius_param, PointObject):
+                            obj.radius_param.color = source_obj.color
+                        elif isinstance(obj.radius_param, tuple):
+                            obj.radius_param[0].color = source_obj.color
+                            obj.radius_param[1].color = source_obj.color
 
     def _draw_freehand(self, currentPoint):
         painter = QPainter(self.image)
