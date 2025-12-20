@@ -900,14 +900,7 @@ class TransparentOverlay(QWidget):
                         if obj.radius_param[0] in current_removals or obj.radius_param[1] in current_removals:
                             final_removal.add(obj)
                             changed = True
-                    # Also remove points if Circle is removed?
-                    if obj in current_removals:
-                        final_removal.add(obj.center_obj)
-                        if isinstance(obj.radius_param, PointObject):
-                            final_removal.add(obj.radius_param)
-                        if isinstance(obj.radius_param, tuple):
-                            final_removal.add(obj.radius_param[0])
-                            final_removal.add(obj.radius_param[1])
+
                     # Also remove points if Circle is removed?
                     if obj in current_removals:
                         final_removal.add(obj.center_obj)
@@ -939,6 +932,12 @@ class TransparentOverlay(QWidget):
                         if isinstance(circ.radius_param, tuple) and obj in circ.radius_param:
                             final_removal.add(obj)
                             changed = True
+
+                    # Check Line dependencies for Points
+                    for line in [l for l in current_removals if isinstance(l, LineObject)]:
+                        if line.p1_obj == obj or line.p2_obj == obj:
+                            final_removal.add(obj)
+                            changed = True
                             
                 elif isinstance(obj, RectangleObject):
                     for p in obj.points:
@@ -965,7 +964,12 @@ class TransparentOverlay(QWidget):
                     obj.update()
 
     def _propagate_color_change(self, source_obj):
-        if isinstance(source_obj, RectangleObject):
+        if isinstance(source_obj, LineObject):
+            source_obj.p1_obj.color = source_obj.color
+            if source_obj.p2_obj and isinstance(source_obj.p2_obj, PointObject):
+                source_obj.p2_obj.color = source_obj.color
+
+        elif isinstance(source_obj, RectangleObject):
             for p in source_obj.points:
                 p.color = source_obj.color
         elif isinstance(source_obj, CircleObject):
@@ -1016,6 +1020,14 @@ class TransparentOverlay(QWidget):
                         elif isinstance(obj.radius_param, tuple):
                             obj.radius_param[0].color = source_obj.color
                             obj.radius_param[1].color = source_obj.color
+                            
+                elif isinstance(obj, LineObject):
+                    if obj.p1_obj == source_obj or obj.p2_obj == source_obj:
+                        obj.color = source_obj.color
+                        # Propagate to other point
+                        other_p = obj.p2_obj if obj.p1_obj == source_obj else obj.p1_obj
+                        if isinstance(other_p, PointObject):
+                            other_p.color = source_obj.color
 
     def _draw_freehand(self, currentPoint):
         painter = QPainter(self.image)
