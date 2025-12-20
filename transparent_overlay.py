@@ -40,6 +40,7 @@ class TransparentOverlay(QWidget):
         
         # Line State
         self.pending_p1 = None
+        self.pending_p1_created = False
         self.press_pos = None
         
         # Parallel/Perp State
@@ -512,13 +513,24 @@ class TransparentOverlay(QWidget):
                     self.press_pos = pos
                     hit_p = self._get_point_at(pos)
                     # Check for existing point to snap?
-                    if not hit_p:
-                        hit_p = self._create_point(pos)
-                        
+                    
                     if not self.pending_p1:
+                        if not hit_p:
+                            hit_p = self._create_point(pos, save_history=True)
+                            self.pending_p1_created = True
+                        else:
+                            self.pending_p1_created = False # Existing point, history not consumed yet
                         self.pending_p1 = hit_p
                     else:
-                        self._create_line_object(self.pending_p1, hit_p)
+                        # Click-Click completion
+                        should_save = not self.pending_p1_created
+                        if not hit_p:
+                            hit_p = self._create_point(pos, save_history=should_save)
+                            line_save = False
+                        else:
+                            line_save = should_save
+                        
+                        self._create_line_object(self.pending_p1, hit_p, save_history=line_save)
                         self.pending_p1 = None
                 return
             
@@ -538,12 +550,23 @@ class TransparentOverlay(QWidget):
                 # Similar logic to lines: Drag or Click-Click
                 self.press_pos = pos
                 hit_p = self._get_point_at(pos)
-                if not hit_p: hit_p = self._create_point(pos)
                 
                 if not self.pending_p1:
+                    if not hit_p: 
+                        hit_p = self._create_point(pos, save_history=True)
+                        self.pending_p1_created = True
+                    else:
+                        self.pending_p1_created = False
                     self.pending_p1 = hit_p
                 else:
-                    self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'))
+                    should_save = not self.pending_p1_created
+                    if not hit_p: 
+                        hit_p = self._create_point(pos, save_history=should_save)
+                        rect_save = False
+                    else:
+                        rect_save = should_save
+                        
+                    self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'), save_history=rect_save)
                 return
             
             if self.currentTool == 'pen':
@@ -584,9 +607,15 @@ class TransparentOverlay(QWidget):
                 
                 if dist > drag_threshold:
                     hit_p = self._get_point_at(pos)
-                    if not hit_p: hit_p = self._create_point(pos)
+                    should_save = not self.pending_p1_created
                     
-                    self._create_line_object(self.pending_p1, hit_p)
+                    if not hit_p: 
+                        hit_p = self._create_point(pos, save_history=should_save)
+                        line_save = False
+                    else:
+                        line_save = should_save
+                    
+                    self._create_line_object(self.pending_p1, hit_p, save_history=line_save)
                     self.pending_p1 = None
 
             if self.currentTool in ['rectangle', 'rectangle_filled'] and self.pending_p1 and self.press_pos:
@@ -595,9 +624,15 @@ class TransparentOverlay(QWidget):
                 
                 if dist > drag_threshold:
                     hit_p = self._get_point_at(pos)
-                    if not hit_p: hit_p = self._create_point(pos)
+                    should_save = not self.pending_p1_created
                     
-                    self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'))
+                    if not hit_p: 
+                        hit_p = self._create_point(pos, save_history=should_save)
+                        rect_save = False
+                    else:
+                        rect_save = should_save
+                    
+                    self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'), save_history=rect_save)
 
             if self.currentTool == 'capture_crop':
                 if self.pending_p1:
@@ -640,8 +675,8 @@ class TransparentOverlay(QWidget):
                         return QPoint(pt.x(), pt.y()), (l1, l2)
         return None, None
 
-    def _create_point(self, pos, parents=None, color=None):
-        self.save_state()
+    def _create_point(self, pos, parents=None, color=None, save_history=True):
+        if save_history: self.save_state()
         if color is None:
             color = self.brushColor
         new_point = PointObject(pos.x(), pos.y(), self.pointIdCounter, color=color, parents=parents)
@@ -679,8 +714,8 @@ class TransparentOverlay(QWidget):
                         prev_p.y = moved_point.y
                         prev_p.x = opp_p.x
         
-    def _create_line_object(self, p1_obj, p2_obj):
-        self.save_state()
+    def _create_line_object(self, p1_obj, p2_obj, save_history=True):
+        if save_history: self.save_state()
         new_line = LineObject(p1_obj, p2_obj, self.currentTool, self.brushColor, self.brushSize)
         self.objects.append(new_line)
         self.update()
@@ -736,11 +771,11 @@ class TransparentOverlay(QWidget):
                             final_removal.add(obj)
                             changed = True
                 elif isinstance(obj, PointObject):
-                     # Check if it belongs to a Rectangle that is being removed
-                     for rect in [r for r in current_removals if isinstance(r, RectangleObject)]:
-                         if obj in rect.points:
-                             final_removal.add(obj)
-                             changed = True
+                    # Check if it belongs to a Rectangle that is being removed
+                    for rect in [r for r in current_removals if isinstance(r, RectangleObject)]:
+                        if obj in rect.points:
+                            final_removal.add(obj)
+                            changed = True
 
         self.objects = [obj for obj in self.objects if obj not in final_removal]
         self.update()
@@ -780,7 +815,7 @@ class TransparentOverlay(QWidget):
 
         self.update()
 
-    def _create_rectangle(self, p1_obj, p3_obj, filled=False):
+    def _create_rectangle(self, p1_obj, p3_obj, filled=False, save_history=True):
         # p1 is TopLeft(ish), p3 is BottomRight(ish) - Diagrammatically
         # We need p2 and p4
         # p1 = (x1, y1), p3 = (x3, y3)
@@ -801,11 +836,13 @@ class TransparentOverlay(QWidget):
         x1, y1 = p1_obj.pos().x(), p1_obj.pos().y()
         x3, y3 = p3_obj.pos().x(), p3_obj.pos().y()
         
-        p2_obj = self._create_point(QPoint(x3, y1))
-        p4_obj = self._create_point(QPoint(x1, y3))
+        # Always create intermediate points WITHOUT saving history for them individually
+        # as they are part of the rectangle action
+        p2_obj = self._create_point(QPoint(x3, y1), save_history=False)
+        p4_obj = self._create_point(QPoint(x1, y3), save_history=False)
         
         # Order: p1, p2, p3, p4
-        self.save_state()
+        if save_history: self.save_state()
         new_rect = RectangleObject(p1_obj, p2_obj, p3_obj, p4_obj, color=self.brushColor, width=self.brushSize, filled=filled)
         self.objects.append(new_rect)
         self.pending_p1 = None
