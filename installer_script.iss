@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ScreenPaint"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.1"
 #define MyAppPublisher "Usuario"
 #define MyAppExeName "ScreenPaint.exe"
 
@@ -18,7 +18,7 @@ DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
 OutputDir=.
-OutputBaseFilename=ScreenPaint_Installer_v1.0
+OutputBaseFilename=ScreenPaint_Installer_v1.1
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
