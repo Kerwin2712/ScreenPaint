@@ -1222,7 +1222,7 @@ class TransparentOverlay(QWidget):
         self.update()
 
     def keyPressEvent(self, event):
-        """Handle keyboard shortcuts for copy, paste, and delete"""
+        """Handle keyboard shortcuts for copy, paste, delete, and undo/redo"""
         # Ctrl+C: Copy
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self._copy_selected_object()
@@ -1231,6 +1231,16 @@ class TransparentOverlay(QWidget):
         # Ctrl+V: Activate paste preview mode
         elif event.key() == Qt.Key.Key_V and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self._activate_paste_preview()
+            event.accept()
+        
+        # Ctrl+Z: Undo
+        elif event.key() == Qt.Key.Key_Z and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.undo()
+            event.accept()
+        
+        # Ctrl+Y: Redo
+        elif event.key() == Qt.Key.Key_Y and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.redo()
             event.accept()
         
         # Escape: Cancel paste preview
@@ -1323,12 +1333,45 @@ class TransparentOverlay(QWidget):
         """Delete the currently selected object"""
         obj_to_delete = self.draggingObject if self.draggingObject else self.selected_object
         
-        if obj_to_delete and obj_to_delete in self.objects:
-            self.save_state()
-            self._erase_objects_at(obj_to_delete.pos() if isinstance(obj_to_delete, PointObject) else QPoint(0, 0))
+        if not obj_to_delete:
+            print("No object selected to delete")
+            return
+        
+        if obj_to_delete not in self.objects:
+            print("Selected object not found in objects list")
+            return
+        
+        self.save_state()  # Save for undo
+        
+        # Use the existing erase logic which handles dependencies
+        # Find a point on the object to use for erasure
+        if isinstance(obj_to_delete, PointObject):
+            erase_pos = QPoint(obj_to_delete.x, obj_to_delete.y)
+        elif isinstance(obj_to_delete, LineObject):
+            erase_pos = QPoint(obj_to_delete.p1_obj.x, obj_to_delete.p1_obj.y)
+        elif isinstance(obj_to_delete, CircleObject):
+            erase_pos = QPoint(obj_to_delete.center_obj.x, obj_to_delete.center_obj.y)
+        elif isinstance(obj_to_delete, RectangleObject):
+            erase_pos = QPoint(obj_to_delete.points[0].x, obj_to_delete.points[0].y)
+        elif isinstance(obj_to_delete, FreehandObject):
+            # For freehand, just remove it directly
+            self.objects.remove(obj_to_delete)
             self.selected_object = None
             self.draggingObject = None
             self.update()
+            print(f"Deleted {type(obj_to_delete).__name__}")
+            return
+        else:
+            print(f"Unknown object type: {type(obj_to_delete).__name__}")
+            return
+        
+        # Erase with a small tolerance to ensure we hit the object
+        self._erase_objects_at(erase_pos)
+        
+        self.selected_object = None
+        self.draggingObject = None
+        self.update()
+        print(f"Deleted {type(obj_to_delete).__name__}")
     
     def _deep_copy_object(self, obj):
         """Create a deep copy of a geometric object and all its dependencies
