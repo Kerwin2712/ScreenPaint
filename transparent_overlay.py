@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog, QC
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QPointF
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor, QPainterPath
 from PyQt6.QtWidgets import QFileDialog
-from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, calculate_intersection
+from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, FreehandObject, calculate_intersection
 from capture_screen import take_screenshot
 import copy
 
@@ -58,7 +58,9 @@ class TransparentOverlay(QWidget):
         self.pointIdCounter = 1
         self.draggingObject = None
         self.lastDragPoint = QPoint()
-        self.eraser_visual_path = QPainterPath() # Visual trail for eraser
+        self.lastDragPoint = QPoint()
+        # self.eraser_visual_path = QPainterPath() # Visual trail removed
+        self.current_freehand_obj = None # Live pencil stroke
 
 
         layout = QVBoxLayout()
@@ -269,8 +271,13 @@ class TransparentOverlay(QWidget):
             if isinstance(obj, RectangleObject):
                 obj.draw(painter, rect)
 
-        # 1. Draw Freehand Layer
+        # 1. Draw Freehand Layer (Raster - now only for remaining raster content if any, 
+        # but we are transitioning to objects)
         painter.drawPixmap(0, 0, self.image)
+        
+        # Draw live pencil stroke
+        if self.current_freehand_obj:
+            self.current_freehand_obj.draw(painter, rect)
         
         # 2. Draw Objects
         
@@ -282,6 +289,11 @@ class TransparentOverlay(QWidget):
         # Draw Circles
         for obj in self.objects:
             if isinstance(obj, CircleObject):
+                obj.draw(painter, rect)
+
+        # Draw Freehand Objects
+        for obj in self.objects:
+            if isinstance(obj, FreehandObject):
                 obj.draw(painter, rect)
 
         # Draw Points
@@ -301,12 +313,12 @@ class TransparentOverlay(QWidget):
             rect = QRect(self.pending_p1.pos(), mouse_pos).normalized()
             painter.drawRect(rect)
             
-        # 5. Draw Eraser Visual Trail
-        if self.currentTool == 'eraser' and not self.eraser_visual_path.isEmpty():
-            eraser_pen = QPen(QColor(200, 200, 200, 100), self.eraserSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(eraser_pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawPath(self.eraser_visual_path)
+        # 5. Draw Eraser Visual Trail - REMOVED
+        # if self.currentTool == 'eraser' and not self.eraser_visual_path.isEmpty():
+        #     eraser_pen = QPen(QColor(200, 200, 200, 100), self.eraserSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        #     painter.setPen(eraser_pen)
+        #     painter.setBrush(Qt.BrushStyle.NoBrush)
+        #     painter.drawPath(self.eraser_visual_path)
 
     def _draw_preview(self, painter):
         if self.currentTool in ['parallel', 'perpendicular']:
@@ -373,7 +385,7 @@ class TransparentOverlay(QWidget):
             self.startPoint = pos 
             
             if self.currentTool == 'hand':
-                # Hit detection: Points -> Lines -> Circles
+                # Hit detection: Points -> Others
                 hit_obj = None
                 for obj in reversed(self.objects):
                     if isinstance(obj, PointObject) and obj.contains(pos):
@@ -381,23 +393,23 @@ class TransparentOverlay(QWidget):
                         break
                 if not hit_obj:
                     for obj in reversed(self.objects):
-                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject)) and obj.contains(pos):
+                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject)) and obj.contains(pos):
                             hit_obj = obj
-                            break 
+                            break
                 if hit_obj:
                     self.draggingObject = hit_obj
                     self.lastDragPoint = pos
                     self.save_state() # Save before move
                     self.drawing = True
-                return 
+                return
 
             if self.currentTool == 'eraser':
                 self.drawing = True
                 self.save_state() # Save before erase
-                self.eraser_visual_path = QPainterPath(QPointF(pos))
-                self.eraser_visual_path.moveTo(QPointF(pos))
+                # self.eraser_visual_path = QPainterPath(QPointF(pos))
+                # self.eraser_visual_path.moveTo(QPointF(pos))
                 self._erase_objects_at(pos)
-                self._draw_freehand(pos) # Also erase pixels
+                # self._draw_freehand(pos) # Pixels no longer used for pencil
                 return
 
             if self.currentTool == 'point': 
@@ -419,10 +431,10 @@ class TransparentOverlay(QWidget):
                         hit_obj = obj
                         break
                 
-                # Then lines/circles
+                # Then lines/circles/freehand
                 if not hit_obj:
                     for obj in reversed(self.objects):
-                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject)) and obj.contains(pos):
+                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject)) and obj.contains(pos):
                             hit_obj = obj
                             break 
                 
@@ -743,19 +755,28 @@ class TransparentOverlay(QWidget):
             
             if self.currentTool == 'pen':
                 self.drawing = True
+                # self.save_state() # Moved to release to avoid empty objects? 
+                # Let's save on release or press. 
+                # Actually, if we want undo to work for the whole stroke, we save on press.
                 self.save_state()
+                self.current_freehand_obj = FreehandObject(color=self.brushColor, width=self.brushSize)
+                self.current_freehand_obj.path.moveTo(QPointF(pos))
+                return
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
         
         if self.drawing:
             if self.currentTool == 'pen':
-                self._draw_freehand(pos)
+                # self._draw_freehand(pos)
+                if self.current_freehand_obj:
+                    self.current_freehand_obj.path.lineTo(QPointF(pos))
+                    self.update()
                 self.lastPoint = pos
             elif self.currentTool == 'eraser':
                 self._erase_objects_at(pos)
-                self._draw_freehand(pos) # Also erase pixels
-                self.eraser_visual_path.lineTo(QPointF(pos))
+                # self.eraser_visual_path.lineTo(QPointF(pos)) # Removed visual trail
+
             elif self.currentTool == 'hand' and self.draggingObject:
                 # Drag logic
                 dx = pos.x() - self.lastDragPoint.x()
@@ -822,9 +843,14 @@ class TransparentOverlay(QWidget):
                 
             self.drawing = False
             self.draggingObject = None
+
+            if self.currentTool == 'pen' and self.current_freehand_obj:
+                self.objects.append(self.current_freehand_obj)
+                self.current_freehand_obj = None
+                self.update()
             
             if self.currentTool == 'eraser':
-                self.eraser_visual_path = QPainterPath() # Clear trail
+                # self.eraser_visual_path = QPainterPath() # Clear trail
                 self.update()
 
     def _get_point_at(self, pos):
@@ -1072,21 +1098,6 @@ class TransparentOverlay(QWidget):
                         other_p = obj.p2_obj if obj.p1_obj == source_obj else obj.p1_obj
                         if isinstance(other_p, PointObject):
                             other_p.color = source_obj.color
-
-    def _draw_freehand(self, currentPoint):
-        painter = QPainter(self.image)
-        if self.currentTool == 'eraser':
-            # Erase to alpha 1 to keep window responsive to mouse events (prevent click-through)
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-            painter.setPen(QPen(QColor(0, 0, 0, 1), self.eraserSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        else:
-            painter.setPen(QPen(self.brushColor, self.brushSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        
-        painter.drawLine(self.lastPoint, currentPoint)
-        painter.end()
-        self.update()
-
-        self.update()
 
     def _create_rectangle(self, p1_obj, p3_obj, filled=False, save_history=True):
         

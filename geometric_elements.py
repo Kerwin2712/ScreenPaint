@@ -1,6 +1,7 @@
 import math
-from PyQt6.QtCore import Qt, QPoint, QRect
-from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QPolygon
+import copy
+from PyQt6.QtCore import Qt, QPoint, QRect, QPointF
+from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QPolygon, QPainterPath, QPainterPathStroker
 
 # --- Helper Functions ---
 def calculate_intersection(line1, line2):
@@ -480,4 +481,41 @@ class RectangleObject(DrawingObject):
     def move(self, dx, dy):
         for p in self.points:
             p.move(dx, dy)
+
+class FreehandObject(DrawingObject):
+    def __init__(self, color=Qt.GlobalColor.black, width=3):
+        self.path = QPainterPath()
+        self.color = color
+        self.width = width
+
+    def __deepcopy__(self, memo):
+        # QPainterPath is not pickleable, so we manually copy it
+        new_obj = FreehandObject(self.color, self.width)
+        new_obj.path = QPainterPath(self.path)
+        memo[id(self)] = new_obj
+        return new_obj
+
+    def draw(self, painter, overlay_rect=None):
+
+        painter.setPen(QPen(self.color, self.width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(self.path)
+
+    def contains(self, point, tolerance=None):
+        # Use QPainterPathStroker to create a "fat" path for hit testing
+        stroker = QPainterPathStroker()
+        hit_width = self.width + (tolerance * 2 if tolerance is not None else 10)
+        stroker.setWidth(hit_width)
+        stroker.setCapStyle(Qt.PenCapStyle.RoundCap)
+        stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        
+        hit_path = stroker.createStroke(self.path)
+        return hit_path.contains(QPointF(point))
+
+    def move(self, dx, dy):
+        # Translate the entire path
+        from PyQt6.QtGui import QTransform
+        transform = QTransform().translate(dx, dy)
+        self.path = transform.map(self.path)
+
 
