@@ -61,6 +61,13 @@ class TransparentOverlay(QWidget):
         self.lastDragPoint = QPoint()
         # self.eraser_visual_path = QPainterPath() # Visual trail removed
         self.current_freehand_obj = None # Live pencil stroke
+        
+        # Copy/Paste Support
+        self.clipboard = []  # Internal clipboard for copied objects
+        self.selected_object = None  # Track last selected/interacted object
+        self.pasting_preview = False  # True when showing paste preview
+        self.paste_object = None  # Object being previewed for paste
+        self.paste_offset = QPoint(0, 0)  # Offset from cursor to object origin
 
 
         layout = QVBoxLayout()
@@ -272,45 +279,55 @@ class TransparentOverlay(QWidget):
         
         rect = self.rect()
         
-        # 0. Draw Rectangles (Background)
+        # Draw pixmap (pencil strokes)
+        if not self.image.isNull():
+            painter.drawPixmap(0, 0, self.image)
+        
+        # Draw all objects
         for obj in self.objects:
-            if isinstance(obj, RectangleObject):
-                obj.draw(painter, rect)
-
-        # 1. Draw Freehand Layer (Raster - now only for remaining raster content if any, 
-        # but we are transitioning to objects)
-        painter.drawPixmap(0, 0, self.image)
+            if isinstance(obj, PointObject):
+                obj.draw(painter)
+            elif isinstance(obj, LineObject):
+                obj.draw(painter, self.rect())
+            elif isinstance(obj, CircleObject):
+                obj.draw(painter)
+            elif isinstance(obj, RectangleObject):
+                obj.draw(painter)
+            elif isinstance(obj, FreehandObject):
+                obj.draw(painter)
         
         # Draw live pencil stroke
         if self.current_freehand_obj:
-            self.current_freehand_obj.draw(painter, rect)
+            self.current_freehand_obj.draw(painter)
         
-        # 2. Draw Objects
+        # Draw preview elements for current tools
+        if self.currentTool in ['segment', 'ray', 'line'] and self.pending_p1:
+            self._draw_line_preview(painter)
+        elif self.currentTool in ['rectangle', 'rectangle_filled'] and self.pending_p1:
+            self._draw_rect_preview(painter)
+        elif self.currentTool in ['circle_center_point', 'circle_filled', 'circle_compass']:
+            self._draw_circle_preview(painter)
+        elif self.currentTool in ['parallel', 'perpendicular']:
+            self._draw_pp_preview(painter)
         
-        # Draw Lines
-        for obj in self.objects:
-            if isinstance(obj, LineObject):
-                obj.draw(painter, rect)
-
-        # Draw Circles
-        for obj in self.objects:
-            if isinstance(obj, CircleObject):
-                obj.draw(painter, rect)
-
-        # Draw Freehand Objects
-        for obj in self.objects:
-            if isinstance(obj, FreehandObject):
-                obj.draw(painter, rect)
-
-        # Draw Points
-        for obj in self.objects:
-            if isinstance(obj, PointObject):
-                obj.draw(painter, rect)
+        # Draw paste preview with semi-transparency
+        if self.pasting_preview and self.paste_object:
+            painter.setOpacity(0.5)  # Semi-transparent
             
-        # 3. Draw Preview
-        self._draw_preview(painter)
-        
-        # 4. Draw Capture Selection
+            if isinstance(self.paste_object, PointObject):
+                self.paste_object.draw(painter)
+            elif isinstance(self.paste_object, LineObject):
+                self.paste_object.draw(painter, self.rect())
+            elif isinstance(self.paste_object, CircleObject):
+                self.paste_object.draw(painter)
+            elif isinstance(self.paste_object, RectangleObject):
+                self.paste_object.draw(painter)
+            elif isinstance(self.paste_object, FreehandObject):
+                self.paste_object.draw(painter)
+            
+            painter.setOpacity(1.0)  # Reset opacity
+            
+        # Draw Capture Selection
         if self.currentTool == 'capture_crop' and self.pending_p1:
             mouse_pos = self.mapFromGlobal(QCursor.pos())
             pen = QPen(Qt.GlobalColor.cyan, 2, Qt.PenStyle.DashLine)
@@ -386,6 +403,18 @@ class TransparentOverlay(QWidget):
     def mousePressEvent(self, event):
         self.interacted.emit()
         
+        # Handle paste preview mode
+        if self.pasting_preview:
+            if event.button() == Qt.MouseButton.LeftButton:
+                # Finalize paste at current position
+                pos = event.position().toPoint()
+                self._finalize_paste(pos)
+                return
+            elif event.button() == Qt.MouseButton.RightButton:
+                # Cancel paste
+                self._cancel_paste_preview()
+                return
+        
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             self.lastPoint = pos
@@ -406,6 +435,7 @@ class TransparentOverlay(QWidget):
                             break
                 if hit_obj:
                     self.draggingObject = hit_obj
+                    self.selected_object = hit_obj  # Track for copy/paste
                     self.lastDragPoint = pos
                     self.save_state() # Save before move
                     self.drawing = True
@@ -449,6 +479,7 @@ class TransparentOverlay(QWidget):
                 if hit_obj:
                     # Apply Color
                     self.save_state()
+                    self.selected_object = hit_obj  # Track for copy/paste
                     hit_obj.color = self.brushColor
                     self._propagate_color_change(hit_obj)
                     self.update()
@@ -773,6 +804,41 @@ class TransparentOverlay(QWidget):
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
+        
+        # Handle paste preview mode - update object position to follow cursor
+        if self.pasting_preview and self.paste_object:
+            # Calculate how much to move from current position to cursor
+            if isinstance(self.paste_object, PointObject):
+                dx = pos.x() - self.paste_object.x
+                dy = pos.y() - self.paste_object.y
+                self.paste_object.x = pos.x()
+                self.paste_object.y = pos.y()
+            else:
+                # For complex objects, move them to follow cursor
+                # Get a reference point (first point for lines/circles, corner for rectangles)
+                if isinstance(self.paste_object, LineObject):
+                    ref_x, ref_y = self.paste_object.p1_obj.x, self.paste_object.p1_obj.y
+                    dx = pos.x() - ref_x
+                    dy = pos.y() - ref_y
+                elif isinstance(self.paste_object, CircleObject):
+                    ref_x, ref_y = self.paste_object.center_obj.x, self.paste_object.center_obj.y
+                    dx = pos.x() - ref_x
+                    dy = pos.y() - ref_y
+                elif isinstance(self.paste_object, RectangleObject):
+                    ref_x, ref_y = self.paste_object.points[0].x, self.paste_object.points[0].y
+                    dx = pos.x() - ref_x
+                    dy = pos.y() - ref_y
+                elif isinstance(self.paste_object, FreehandObject):
+                    # For freehand, just move it by a small amount each time
+                    # We'll use a simple approach
+                    dx = pos.x() - self.paste_offset.x()
+                    dy = pos.y() - self.paste_offset.y()
+                    
+                self.paste_object.move(dx, dy)
+            
+            self.paste_offset = pos
+            self.update()
+            return
         
         if self.drawing:
             if self.currentTool == 'pen':
@@ -1155,8 +1221,229 @@ class TransparentOverlay(QWidget):
         self.pending_p1 = None
         self.update()
 
+    def keyPressEvent(self, event):
+        """Handle keyboard shortcuts for copy, paste, and delete"""
+        # Ctrl+C: Copy
+        if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self._copy_selected_object()
+            event.accept()
+        
+        # Ctrl+V: Activate paste preview mode
+        elif event.key() == Qt.Key.Key_V and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self._activate_paste_preview()
+            event.accept()
+        
+        # Escape: Cancel paste preview
+        elif event.key() == Qt.Key.Key_Escape:
+            if self.pasting_preview:
+                self._cancel_paste_preview()
+                event.accept()
+            else:
+                super().keyPressEvent(event)
+        
+        # Delete: Remove selected object
+        elif event.key() == Qt.Key.Key_Delete:
+            self._delete_selected_object()
+            event.accept()
+        
+        else:
+            super().keyPressEvent(event)
+    
+    def _copy_selected_object(self):
+        """Copy the currently selected object to clipboard"""
+        # Determine what to copy: draggingObject or selected_object
+        obj_to_copy = self.draggingObject if self.draggingObject else self.selected_object
+        
+        if not obj_to_copy:
+            # Try to get the last object in the list (most recently added)
+            if self.objects:
+                obj_to_copy = self.objects[-1]
+        
+        if obj_to_copy:
+            try:
+                # Deep copy the object and any related objects
+                copied_obj = self._deep_copy_object(obj_to_copy)
+                if copied_obj:
+                    self.clipboard = [copied_obj]  # Store as list for future multi-select support
+                    print(f"Copied object: {type(obj_to_copy).__name__}")
+            except Exception as e:
+                print(f"Error copying object: {e}")
+    
+    def _activate_paste_preview(self):
+        """Activate paste preview mode - element follows cursor until click"""
+        if not self.clipboard:
+            return
+        
+        try:
+            # Create a preview copy of the first object in clipboard
+            obj = self.clipboard[0]
+            self.paste_object = self._deep_copy_object(obj)
+            
+            if self.paste_object:
+                self.pasting_preview = True
+                # Calculate initial offset (center of object to cursor)
+                self.paste_offset = QPoint(0, 0)
+                self.setCursor(Qt.CursorShape.CrossCursor)
+                self.update()
+                print("Paste preview activated - click to place, Esc to cancel")
+        except Exception as e:
+            print(f"Error activating paste preview: {e}")
+    
+    def _cancel_paste_preview(self):
+        """Cancel paste preview mode"""
+        self.pasting_preview = False
+        self.paste_object = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
+        print("Paste cancelled")
+    
+    def _finalize_paste(self, pos):
+        """Finalize paste at the given position"""
+        if not self.paste_object:
+            return
+        
+        self.save_state()  # Save for undo
+        
+        # Collect all objects that need to be added (object + dependencies)
+        objects_to_add = self._collect_object_dependencies(self.paste_object)
+        
+        # Add all objects to the scene
+        for obj in objects_to_add:
+            self.objects.append(obj)
+        
+        print(f"Pasted object: {type(self.paste_object).__name__}")
+        
+        # Exit preview mode
+        self.pasting_preview = False
+        self.paste_object = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.update()
+    
+    def _delete_selected_object(self):
+        """Delete the currently selected object"""
+        obj_to_delete = self.draggingObject if self.draggingObject else self.selected_object
+        
+        if obj_to_delete and obj_to_delete in self.objects:
+            self.save_state()
+            self._erase_objects_at(obj_to_delete.pos() if isinstance(obj_to_delete, PointObject) else QPoint(0, 0))
+            self.selected_object = None
+            self.draggingObject = None
+            self.update()
+    
+    def _deep_copy_object(self, obj):
+        """Create a deep copy of a geometric object and all its dependencies
+        Returns the copied object WITHOUT adding it or dependencies to self.objects
+        """
+        if isinstance(obj, PointObject):
+            # Copy point
+            new_point = PointObject(obj.x, obj.y, obj.id, color=obj.color, size=obj.size, parents=obj.parents)
+            return new_point
+        
+        elif isinstance(obj, LineObject):
+            # Copy the points first (without adding to objects)
+            new_p1 = PointObject(obj.p1_obj.x, obj.p1_obj.y, self.pointIdCounter, color=obj.p1_obj.color, size=obj.p1_obj.size)
+            new_p2 = None
+            if obj.p2_obj:
+                new_p2 = PointObject(obj.p2_obj.x, obj.p2_obj.y, self.pointIdCounter + 1, color=obj.p2_obj.color, size=obj.p2_obj.size)
+            
+            # Copy the line
+            new_line = LineObject(new_p1, new_p2, obj.type, color=obj.color, width=obj.width, reference_line=obj.reference_line)
+            return new_line
+        
+        elif isinstance(obj, CircleObject):
+            # Copy center point
+            new_center = PointObject(obj.center_obj.x, obj.center_obj.y, self.pointIdCounter, color=obj.center_obj.color, size=obj.center_obj.size)
+            
+            # Handle radius parameter based on circle type
+            new_radius_param = obj.radius_param
+            if obj.type == 'center_point' and isinstance(obj.radius_param, PointObject):
+                new_radius_param = PointObject(obj.radius_param.x, obj.radius_param.y, self.pointIdCounter + 1, 
+                                               color=obj.radius_param.color, size=obj.radius_param.size)
+            elif obj.type == 'compass' and isinstance(obj.radius_param, tuple):
+                p1 = PointObject(obj.radius_param[0].x, obj.radius_param[0].y, self.pointIdCounter + 1,
+                                color=obj.radius_param[0].color, size=obj.radius_param[0].size)
+                p2 = PointObject(obj.radius_param[1].x, obj.radius_param[1].y, self.pointIdCounter + 2,
+                                color=obj.radius_param[1].color, size=obj.radius_param[1].size)
+                new_radius_param = (p1, p2)
+            
+            # Copy the circle
+            new_circle = CircleObject(new_center, new_radius_param, circle_type=obj.type, color=obj.color, width=obj.width, filled=obj.filled)
+            return new_circle
+        
+        elif isinstance(obj, RectangleObject):
+            # Copy all 4 corner points
+            new_points = []
+            for i, p in enumerate(obj.points):
+                new_p = PointObject(p.x, p.y, self.pointIdCounter + i, color=p.color, size=p.size)
+                new_points.append(new_p)
+            
+            # Copy the rectangle
+            if len(new_points) == 4:
+                new_rect = RectangleObject(new_points[0], new_points[1], new_points[2], new_points[3], 
+                                          color=obj.color, width=obj.width, filled=obj.filled)
+                return new_rect
+        
+        elif isinstance(obj, FreehandObject):
+            # Use the existing __deepcopy__ implementation
+            new_freehand = copy.deepcopy(obj)
+            return new_freehand
+        
+        return None
+    
+    def _collect_object_dependencies(self, obj):
+        """Collect all objects that should be added when finalizing paste
+        Returns a list of all objects including the main object and its dependencies
+        """
+        objects_to_add = []
+        
+        if isinstance(obj, PointObject):
+            objects_to_add.append(obj)
+        
+        elif isinstance(obj, LineObject):
+            if obj.p1_obj:
+                objects_to_add.append(obj.p1_obj)
+                obj.p1_obj.id = self.pointIdCounter
+                self.pointIdCounter += 1
+            if obj.p2_obj:
+                objects_to_add.append(obj.p2_obj)
+                obj.p2_obj.id = self.pointIdCounter
+                self.pointIdCounter += 1
+            objects_to_add.append(obj)
+        
+        elif isinstance(obj, CircleObject):
+            objects_to_add.append(obj.center_obj)
+            obj.center_obj.id = self.pointIdCounter
+            self.pointIdCounter += 1
+            
+            if obj.type == 'center_point' and isinstance(obj.radius_param, PointObject):
+                objects_to_add.append(obj.radius_param)
+                obj.radius_param.id = self.pointIdCounter
+                self.pointIdCounter += 1
+            elif obj.type == 'compass' and isinstance(obj.radius_param, tuple):
+                objects_to_add.append(obj.radius_param[0])
+                obj.radius_param[0].id = self.pointIdCounter
+                self.pointIdCounter += 1
+                objects_to_add.append(obj.radius_param[1])
+                obj.radius_param[1].id = self.pointIdCounter
+                self.pointIdCounter += 1
+            
+            objects_to_add.append(obj)
+        
+        elif isinstance(obj, RectangleObject):
+            for p in obj.points:
+                objects_to_add.append(p)
+                p.id = self.pointIdCounter
+                self.pointIdCounter += 1
+            objects_to_add.append(obj)
+        
+        elif isinstance(obj, FreehandObject):
+            objects_to_add.append(obj)
+        
+        return objects_to_add
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = TransparentOverlay()
     window.showFullScreen()
     sys.exit(app.exec())
+
