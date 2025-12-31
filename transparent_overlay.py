@@ -137,14 +137,20 @@ class TransparentOverlay(QWidget):
         self.pending_p1 = None
         self._reset_tool_state()
 
+    def set_tool_rectangle_filled(self):
+        self.currentTool = 'rectangle_filled'
+        self._reset_tool_state()
+        
     def set_tool_circle_radius(self):
         self.currentTool = 'circle_radius'
-        self.pending_p1 = None
         self._reset_tool_state()
 
     def set_tool_circle_center_point(self):
         self.currentTool = 'circle_center_point'
-        self.pending_p1 = None
+        self._reset_tool_state()
+        
+    def set_tool_circle_filled(self):
+        self.currentTool = 'circle_filled'
         self._reset_tool_state()
 
     def set_tool_circle_compass(self):
@@ -323,7 +329,7 @@ class TransparentOverlay(QWidget):
     def _draw_preview(self, painter):
         if self.currentTool in ['parallel', 'perpendicular']:
             self._draw_pp_preview(painter)
-        elif self.currentTool in ['circle_center_point', 'circle_compass']:
+        elif self.currentTool in ['circle_center_point', 'circle_compass', 'circle_filled']:
             self._draw_circle_preview(painter)
         elif self.pending_p1 and self.currentTool in ['segment', 'ray', 'line']:
             self._draw_line_preview(painter)
@@ -366,9 +372,10 @@ class TransparentOverlay(QWidget):
     def _draw_circle_preview(self, painter):
         mouse_pos = self.mapFromGlobal(QCursor.pos())
         
-        if self.currentTool == 'circle_center_point' and self.pending_p1:
+        if self.currentTool in ['circle_center_point', 'circle_filled'] and self.pending_p1:
             dummy_p2 = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
-            temp_circle = CircleObject(self.pending_p1, dummy_p2, 'center_point')
+            filled = (self.currentTool == 'circle_filled')
+            temp_circle = CircleObject(self.pending_p1, dummy_p2, 'center_point', color=self.brushColor, width=self.brushSize, filled=filled)
             temp_circle.draw(painter)
             
         elif self.currentTool == 'circle_compass' and len(self.compass_pts) == 2:
@@ -383,6 +390,7 @@ class TransparentOverlay(QWidget):
             pos = event.position().toPoint()
             self.lastPoint = pos
             self.startPoint = pos 
+            self.press_pos = pos
             
             if self.currentTool == 'hand':
                 # Hit detection: Points -> Others
@@ -481,7 +489,7 @@ class TransparentOverlay(QWidget):
                 self.interacted.emit()
                 return
 
-            if self.currentTool == 'circle_center_point':
+            if self.currentTool in ['circle_center_point', 'circle_filled']:
                 hit_p = self._get_point_at(pos)
                 
                 if not self.pending_p1:
@@ -500,7 +508,10 @@ class TransparentOverlay(QWidget):
                         circle_save = should_save
                         
                     if circle_save: self.save_state()
-                    circle = CircleObject(self.pending_p1, hit_p, 'center_point', color=self.brushColor, width=self.brushSize)
+                    
+                    # Create Circle
+                    filled = (self.currentTool == 'circle_filled')
+                    circle = CircleObject(self.pending_p1, hit_p, 'center_point', color=self.brushColor, width=self.brushSize, filled=filled)
                     self.objects.append(circle)
                     self.pending_p1 = None
                     self.update()
@@ -508,9 +519,6 @@ class TransparentOverlay(QWidget):
 
             if self.currentTool == 'circle_compass':
                 hit_p = self._get_point_at(pos)
-                
-                # Logic: P1 (Save) -> P2 (No Save) -> P3 (No Save) + Circle (No Save)
-                # Or P1 (Exists) -> ...
                 
                 save_this_step = False
                 
@@ -786,6 +794,15 @@ class TransparentOverlay(QWidget):
                 # Check for rectangle constraints if moving a point
                 if isinstance(self.draggingObject, PointObject):
                     self._enforce_rectangle_constraints(self.draggingObject)
+                    
+                    # Logic: If moving a Center Point of a Circle, move the Perimeter Point too
+                    # to keep the radius constant (Visual Move).
+                    for obj in self.objects:
+                        if isinstance(obj, CircleObject) and obj.type == 'center_point':
+                            if obj.center_obj == self.draggingObject:
+                                if isinstance(obj.radius_param, PointObject):
+                                    obj.radius_param.move(dx, dy)
+                                    
                 self._propagate_changes()
                 self.update()
         else:
@@ -828,6 +845,28 @@ class TransparentOverlay(QWidget):
                         rect_save = should_save
                     
                     self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'), save_history=rect_save)
+            
+            if self.currentTool in ['circle_center_point', 'circle_filled'] and self.pending_p1 and self.press_pos:
+                drag_threshold = 5
+                dist = (pos - self.press_pos).manhattanLength()
+                
+                if dist > drag_threshold:
+                    hit_p = self._get_point_at(pos)
+                    should_save = not self.pending_p1_created
+                    
+                    if not hit_p:
+                        hit_p = self._create_point(pos, save_history=should_save)
+                        circle_save = False
+                    else:
+                        circle_save = should_save
+                        
+                    if circle_save: self.save_state()
+                    
+                    filled = (self.currentTool == 'circle_filled')
+                    circle = CircleObject(self.pending_p1, hit_p, 'center_point', color=self.brushColor, width=self.brushSize, filled=filled)
+                    self.objects.append(circle)
+                    self.pending_p1 = None
+                    self.update()
 
             if self.currentTool == 'capture_crop':
                 if self.pending_p1:

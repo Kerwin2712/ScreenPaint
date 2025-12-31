@@ -95,6 +95,7 @@ class Toolbar(QWidget):
     # Signal for Circle Tools
     tool_circle_radius = pyqtSignal()
     tool_circle_center_point = pyqtSignal() # Centro a Punto
+    tool_circle_filled = pyqtSignal()       # Centro a Punto (Relleno)
     tool_circle_compass = pyqtSignal()      # Compas
     # Signals for Object Tools
     tool_point = pyqtSignal()
@@ -284,17 +285,21 @@ class Toolbar(QWidget):
         self.rect_menu.addSeparator()
         
         # Add Circle Tools here
-        action_radius = QAction("Círculo (Centro y Radio)", self)
-        action_radius.triggered.connect(self.tool_circle_radius.emit)
-        self.rect_menu.addAction(action_radius)
+        # action_radius = QAction("Círculo (Centro y Radio)", self)
+        # action_radius.triggered.connect(self.tool_circle_radius.emit)
+        # self.rect_menu.addAction(action_radius)
         
-        action_center_point = QAction("Círculo (Centro a Punto)", self)
+        action_center_point = QAction("Círculo", self)
         action_center_point.triggered.connect(self.tool_circle_center_point.emit)
         self.rect_menu.addAction(action_center_point)
         
-        action_compass = QAction("Círculo (Compás)", self)
-        action_compass.triggered.connect(self.tool_circle_compass.emit)
-        self.rect_menu.addAction(action_compass)
+        action_circle_filled = QAction("Círculo Relleno", self)
+        action_circle_filled.triggered.connect(self.tool_circle_filled.emit)
+        self.rect_menu.addAction(action_circle_filled)
+        
+        # action_compass = QAction("Círculo (Compás)", self)
+        # action_compass.triggered.connect(self.tool_circle_compass.emit)
+        # self.rect_menu.addAction(action_compass)
         
         self.btn_rect.setMenu(self.rect_menu)
         self.rect_menu.installEventFilter(self)

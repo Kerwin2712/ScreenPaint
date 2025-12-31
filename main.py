@@ -121,6 +121,7 @@ def main():
     # Circle Tools
     toolbar.tool_circle_radius.connect(overlay.set_tool_circle_radius)
     toolbar.tool_circle_center_point.connect(overlay.set_tool_circle_center_point)
+    toolbar.tool_circle_filled.connect(overlay.set_tool_circle_filled)
     toolbar.tool_circle_compass.connect(overlay.set_tool_circle_compass)
 
     # Object Tools
