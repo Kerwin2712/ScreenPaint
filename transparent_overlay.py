@@ -1,9 +1,8 @@
 import sys
 import math
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog, QColorDialog
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect
-from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
-from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QPointF
+from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor, QPainterPath
 from PyQt6.QtWidgets import QFileDialog
 from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, calculate_intersection
 from capture_screen import take_screenshot
@@ -59,6 +58,8 @@ class TransparentOverlay(QWidget):
         self.pointIdCounter = 1
         self.draggingObject = None
         self.lastDragPoint = QPoint()
+        self.eraser_visual_path = QPainterPath() # Visual trail for eraser
+
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -73,7 +74,32 @@ class TransparentOverlay(QWidget):
         self.currentTool = 'eraser'
         self.pending_p1 = None
         self._reset_tool_state()
+        self._update_eraser_cursor()
+
+    def _update_eraser_cursor(self):
+        # Create a circular cursor for the eraser
+        pixmap_size = self.eraserSize + 2  # Slightly larger to avoid clipping
+        pixmap = QPixmap(pixmap_size, pixmap_size)
+        pixmap.fill(Qt.GlobalColor.transparent)
         
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Draw circle outline
+        painter.setPen(QPen(Qt.GlobalColor.black, 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        center = pixmap_size // 2
+        radius = self.eraserSize // 2
+        painter.drawEllipse(QPoint(center, center), radius, radius)
+        
+        # Simple crosshair or dot in middle? maybe not needed for eraser
+        painter.end()
+        
+        # Hotspot at center
+        cursor = QCursor(pixmap, center, center)
+        self.setCursor(cursor)
+
     def set_tool_line_segment(self): 
         self.currentTool = 'segment'
         self.pending_p1 = None
@@ -274,6 +300,13 @@ class TransparentOverlay(QWidget):
             painter.setBrush(QColor(0, 255, 255, 50))
             rect = QRect(self.pending_p1.pos(), mouse_pos).normalized()
             painter.drawRect(rect)
+            
+        # 5. Draw Eraser Visual Trail
+        if self.currentTool == 'eraser' and not self.eraser_visual_path.isEmpty():
+            eraser_pen = QPen(QColor(200, 200, 200, 100), self.eraserSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(eraser_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(self.eraser_visual_path)
 
     def _draw_preview(self, painter):
         if self.currentTool in ['parallel', 'perpendicular']:
@@ -361,7 +394,10 @@ class TransparentOverlay(QWidget):
             if self.currentTool == 'eraser':
                 self.drawing = True
                 self.save_state() # Save before erase
+                self.eraser_visual_path = QPainterPath(QPointF(pos))
+                self.eraser_visual_path.moveTo(QPointF(pos))
                 self._erase_objects_at(pos)
+                self._draw_freehand(pos) # Also erase pixels
                 return
 
             if self.currentTool == 'point': 
@@ -718,6 +754,8 @@ class TransparentOverlay(QWidget):
                 self.lastPoint = pos
             elif self.currentTool == 'eraser':
                 self._erase_objects_at(pos)
+                self._draw_freehand(pos) # Also erase pixels
+                self.eraser_visual_path.lineTo(QPointF(pos))
             elif self.currentTool == 'hand' and self.draggingObject:
                 # Drag logic
                 dx = pos.x() - self.lastDragPoint.x()
@@ -784,6 +822,10 @@ class TransparentOverlay(QWidget):
                 
             self.drawing = False
             self.draggingObject = None
+            
+            if self.currentTool == 'eraser':
+                self.eraser_visual_path = QPainterPath() # Clear trail
+                self.update()
 
     def _get_point_at(self, pos):
         for obj in reversed(self.objects):
@@ -864,8 +906,10 @@ class TransparentOverlay(QWidget):
 
     def _erase_objects_at(self, pos):
         to_remove = []
+        # Tolerance is radius of eraser
+        tolerance = self.eraserSize / 2
         for obj in self.objects:
-            if obj.contains(pos):
+            if obj.contains(pos, tolerance=tolerance):
                 to_remove.append(obj)
         
         if not to_remove: return
@@ -1032,7 +1076,9 @@ class TransparentOverlay(QWidget):
     def _draw_freehand(self, currentPoint):
         painter = QPainter(self.image)
         if self.currentTool == 'eraser':
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            # Erase to alpha 1 to keep window responsive to mouse events (prevent click-through)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            painter.setPen(QPen(QColor(0, 0, 0, 1), self.eraserSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         else:
             painter.setPen(QPen(self.brushColor, self.brushSize, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         
@@ -1043,22 +1089,6 @@ class TransparentOverlay(QWidget):
         self.update()
 
     def _create_rectangle(self, p1_obj, p3_obj, filled=False, save_history=True):
-        # p1 is TopLeft(ish), p3 is BottomRight(ish) - Diagrammatically
-        # We need p2 and p4
-        # p1 = (x1, y1), p3 = (x3, y3)
-        # p2 = (x3, y1)
-        # p4 = (x1, y3)
-        
-        # We only have p1 and p3 objects. 
-        # Requirement: "cada vertice debe ser un punto nuevo" 
-        # But wait, p1 and p3 MIGHT be existing points if the user clicked on them.
-        # Should we use them directly as vertices? 
-        # "al hacer dos clics se ponen dos puntos que formaran la diagonal"
-        # "cada vertice debe ser un punto nuevo" implies the Corners are points.
-        # It's ambiguous if the start/end *clics* are vertices themselves or if they just define position.
-        # If I click an existing point, presumably I want that point to be a vertex.
-        # So I will use p1_obj and p3_obj as 2 vertices.
-        # I need to CREATE p2_obj and p4_obj.
         
         x1, y1 = p1_obj.pos().x(), p1_obj.pos().y()
         x3, y3 = p3_obj.pos().x(), p3_obj.pos().y()

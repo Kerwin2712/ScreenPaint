@@ -57,7 +57,7 @@ class DrawingObject:
     def draw(self, painter, overlay_rect=None):
         raise NotImplementedError
     
-    def contains(self, point):
+    def contains(self, point, tolerance=None):
         return False
         
     def move(self, dx, dy):
@@ -86,10 +86,11 @@ class PointObject(DrawingObject):
         painter.setFont(font)
         # painter.drawText(QRect(self.x - self.size, self.y - self.size, self.size*2, self.size*2), Qt.AlignmentFlag.AlignCenter, str(self.id))
         
-    def contains(self, point):
+    def contains(self, point, tolerance=None):
+        t = tolerance if tolerance is not None else self.size
         dx = point.x() - self.x
         dy = point.y() - self.y
-        return (dx*dx + dy*dy) <= (self.size * self.size)
+        return (dx*dx + dy*dy) <= (t * t)
 
     def move(self, dx, dy):
         if self.parents:
@@ -258,9 +259,9 @@ class LineObject(DrawingObject):
             return p1, p2
         return p1, p2
         
-    def contains(self, point):
+    def contains(self, point, tolerance=None):
         p1 = self.p1_obj.pos()
-        threshold = 10
+        threshold = tolerance if tolerance is not None else 10
         x0, y0 = point.x(), point.y()
         x1, y1 = p1.x(), p1.y()
 
@@ -388,10 +389,10 @@ class CircleObject(DrawingObject):
         
         painter.drawEllipse(center, int(r), int(r))
 
-    def contains(self, point):
+    def contains(self, point, tolerance=None):
         # Hit detection: strictly on the rim? or inside? 
         # Usually rim for circles in geometry apps.
-        threshold = 5
+        threshold = tolerance if tolerance is not None else 5
         
         center = self.center_obj.pos()
         r = self.get_radius()
@@ -439,9 +440,9 @@ class RectangleObject(DrawingObject):
         # Draw Polygon for filled shape
         painter.drawPolygon(pts)
 
-    def contains(self, point):
+    def contains(self, point, tolerance=None):
         # Check distance to each of the 4 segments
-        threshold = 10
+        threshold = tolerance if tolerance is not None else 10
         pos = point
         x0, y0 = pos.x(), pos.y()
         
