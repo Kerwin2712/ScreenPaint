@@ -102,6 +102,7 @@ class Toolbar(QWidget):
     tool_point = pyqtSignal()
     tool_hand = pyqtSignal()
     tool_paint = pyqtSignal() # Paint Bucket
+    tool_text = pyqtSignal()  # Text Tool
     tool_rectangle = pyqtSignal()
     tool_rectangle = pyqtSignal()
     tool_rectangle_filled = pyqtSignal()
@@ -219,6 +220,8 @@ class Toolbar(QWidget):
                 self._add_hand_button(layout, btn_style)
             elif button_id == 'paint':
                 self._add_paint_button(layout, btn_style)
+            elif button_id == 'text':
+                self._add_text_button(layout, btn_style)
             elif button_id == 'undo':
                 self._add_undo_button(layout, btn_style)
             elif button_id == 'redo':
@@ -406,6 +409,16 @@ class Toolbar(QWidget):
         self.btn_paint.installEventFilter(self)
         layout.addWidget(self.btn_paint)
         self.buttons['paint'] = self.btn_paint
+    
+    def _add_text_button(self, layout, btn_style):
+        """Add text button"""
+        self.btn_text = QPushButton("📝")
+        self.btn_text.setToolTip("Texto")
+        self.btn_text.setStyleSheet(btn_style)
+        self.btn_text.clicked.connect(self.tool_text.emit)
+        self.btn_text.installEventFilter(self)
+        layout.addWidget(self.btn_text)
+        self.buttons['text'] = self.btn_text
     
     def _add_undo_button(self, layout, btn_style):
         """Add undo button"""

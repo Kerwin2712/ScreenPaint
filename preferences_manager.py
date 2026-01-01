@@ -86,7 +86,7 @@ class PreferencesManager:
         """Return default button order"""
         return [
             'grip', 'pen', 'line', 'shapes', 'camera',
-            'hand', 'paint', 'undo', 'redo', 'eraser',
+            'hand', 'paint', 'text', 'undo', 'redo', 'eraser',
             'clear', 'preferences', 'close'
         ]
     
@@ -134,6 +134,7 @@ class PreferencesManager:
             'camera': True,
             'hand': True,
             'paint': True,
+            'text': True,
             'undo': True,
             'redo': True,
             'eraser': True,
@@ -201,6 +202,7 @@ class PreferencesManager:
             'camera': 'Cámara',
             'hand': 'Mano (Mover Objetos)',
             'paint': 'Balde de Pintura',
+            'text': 'Texto',
             'undo': 'Deshacer',
             'redo': 'Rehacer',
             'eraser': 'Borrador',

@@ -6,6 +6,7 @@ shapes,true
 camera,true
 hand,true
 paint,true
+text,true
 undo,true
 redo,true
 eraser,true

@@ -6,9 +6,10 @@ position,button_id
 4,camera
 5,hand
 6,paint
-7,undo
-8,redo
-9,eraser
-10,clear
-11,preferences
-12,close
+7,text
+8,undo
+9,redo
+10,eraser
+11,clear
+12,preferences
+13,close

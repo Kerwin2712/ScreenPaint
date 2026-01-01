@@ -605,3 +605,79 @@ class FreehandObject(DrawingObject):
         self.path = transform.map(self.path)
 
 
+class TextObject(DrawingObject):
+    def __init__(self, rect_corner1, rect_corner2, text, font_size=16, color=Qt.GlobalColor.black):
+        """
+        Create a text object within a rectangular boundary.
+        
+        Args:
+            rect_corner1: QPoint for one corner of the rectangle
+            rect_corner2: QPoint for the opposite corner
+            text: String content to display
+            font_size: Size of the font (default 16)
+            color: Color of the text (default black)
+        """
+        # Store corners as mutable QPoint objects for resizing
+        self.rect_corner1 = QPoint(rect_corner1.x(), rect_corner1.y())
+        self.rect_corner2 = QPoint(rect_corner2.x(), rect_corner2.y())
+        self.text = text
+        self.font_size = font_size
+        self.color = color
+    
+    def get_rect(self):
+        """Get the normalized QRect for the text boundary"""
+        return QRect(self.rect_corner1, self.rect_corner2).normalized()
+    
+    def draw(self, painter, overlay_rect=None):
+        rect = self.get_rect()
+        
+        # Draw rectangle border - ALWAYS WHITE
+        painter.setPen(QPen(Qt.GlobalColor.white, 2, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(rect)
+        
+        # Draw text inside the rectangle with the configured color
+        painter.setPen(QPen(self.color, 1, Qt.PenStyle.SolidLine))
+        font = QFont()
+        font.setPixelSize(self.font_size)
+        painter.setFont(font)
+        
+        # Add some padding to the text
+        text_rect = rect.adjusted(5, 5, -5, -5)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap, self.text)
+    
+    def contains(self, point, tolerance=None):
+        """Check if point is inside the text rectangle"""
+        rect = self.get_rect()
+        threshold = int(tolerance) if tolerance is not None else 10
+        
+        # Expand rect by threshold for easier selection
+        expanded_rect = rect.adjusted(-threshold, -threshold, threshold, threshold)
+        return expanded_rect.contains(point)
+    
+    def contains_corner(self, point, tolerance=10):
+        """Check if point is near a corner for resizing"""
+        threshold = int(tolerance)
+        
+        # Check all four corners
+        corners = [
+            self.rect_corner1,
+            QPoint(self.rect_corner2.x(), self.rect_corner1.y()),
+            self.rect_corner2,
+            QPoint(self.rect_corner1.x(), self.rect_corner2.y())
+        ]
+        
+        for i, corner in enumerate(corners):
+            dx = abs(point.x() - corner.x())
+            dy = abs(point.y() - corner.y())
+            if dx <= threshold and dy <= threshold:
+                return i  # Return corner index
+        
+        return None
+    
+    def move(self, dx, dy):
+        """Move the text object by the given offset"""
+        self.rect_corner1 = QPoint(self.rect_corner1.x() + dx, self.rect_corner1.y() + dy)
+        self.rect_corner2 = QPoint(self.rect_corner2.x() + dx, self.rect_corner2.y() + dy)
+
+

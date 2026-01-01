@@ -4,10 +4,11 @@ from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog, QC
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QPointF
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor, QPainterPath
 from PyQt6.QtWidgets import QFileDialog
-from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, FreehandObject, calculate_intersection
+from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, FreehandObject, TextObject, calculate_intersection
 from capture_screen import take_screenshot
 from preferences_manager import PreferencesManager
 from preferences_dialog import PreferencesDialog
+from text_dialog import TextDialog
 import copy
 
 # --- Overlay Class ---
@@ -217,6 +218,12 @@ class TransparentOverlay(QWidget):
             # But they physically clicked the button.
             self.currentTool = 'paint' 
             self._reset_tool_state()
+    
+    def set_tool_text(self):
+        self.currentTool = 'text'
+        self.pending_p1 = None
+        self._reset_tool_state()
+        self.setCursor(Qt.CursorShape.IBeamCursor)
 
     def set_tool_capture_crop(self):
         self.currentTool = 'capture_crop'
@@ -309,6 +316,8 @@ class TransparentOverlay(QWidget):
                 obj.draw(painter)
             elif isinstance(obj, FreehandObject):
                 obj.draw(painter)
+            elif isinstance(obj, TextObject):
+                obj.draw(painter)
         
         # Draw live pencil stroke
         if self.current_freehand_obj:
@@ -323,6 +332,8 @@ class TransparentOverlay(QWidget):
             self._draw_circle_preview(painter)
         elif self.currentTool in ['parallel', 'perpendicular']:
             self._draw_pp_preview(painter)
+        elif self.currentTool == 'text' and self.pending_p1:
+            self._draw_text_preview(painter)
         
         # Draw paste preview with semi-transparency
         if self.pasting_preview and self.paste_object:
@@ -337,6 +348,8 @@ class TransparentOverlay(QWidget):
             elif isinstance(self.paste_object, RectangleObject):
                 self.paste_object.draw(painter)
             elif isinstance(self.paste_object, FreehandObject):
+                self.paste_object.draw(painter)
+            elif isinstance(self.paste_object, TextObject):
                 self.paste_object.draw(painter)
             
             painter.setOpacity(1.0)  # Reset opacity
@@ -413,6 +426,15 @@ class TransparentOverlay(QWidget):
             dummy_center = PointObject(mouse_pos.x(), mouse_pos.y(), 0, size=0)
             temp_circle = CircleObject(dummy_center, (self.compass_pts[0], self.compass_pts[1]), 'compass')
             temp_circle.draw(painter)
+    
+    def _draw_text_preview(self, painter):
+        """Draw preview rectangle for text tool"""
+        mouse_pos = self.mapFromGlobal(QCursor.pos())
+        pen = QPen(self.brushColor, 1, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        rect = QRect(self.pending_p1.pos(), mouse_pos).normalized()
+        painter.drawRect(rect)
 
     def mousePressEvent(self, event):
         self.interacted.emit()
@@ -438,13 +460,25 @@ class TransparentOverlay(QWidget):
             if self.currentTool == 'hand':
                 # Hit detection: Points -> Others
                 hit_obj = None
+                resizing_text_corner = None
+                
+                # First check if clicking on a TextObject corner for resizing
                 for obj in reversed(self.objects):
-                    if isinstance(obj, PointObject) and obj.contains(pos):
-                        hit_obj = obj
-                        break
+                    if isinstance(obj, TextObject):
+                        corner_idx = obj.contains_corner(pos, tolerance=15)
+                        if corner_idx is not None:
+                            hit_obj = obj
+                            resizing_text_corner = corner_idx
+                            break
+                
                 if not hit_obj:
                     for obj in reversed(self.objects):
-                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject)) and obj.contains(pos):
+                        if isinstance(obj, PointObject) and obj.contains(pos):
+                            hit_obj = obj
+                            break
+                if not hit_obj:
+                    for obj in reversed(self.objects):
+                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject) or isinstance(obj, TextObject)) and obj.contains(pos):
                             hit_obj = obj
                             break
                 if hit_obj:
@@ -453,6 +487,12 @@ class TransparentOverlay(QWidget):
                     self.lastDragPoint = pos
                     self.save_state() # Save before move
                     self.drawing = True
+                    
+                    # Store resize info if resizing text
+                    if isinstance(hit_obj, TextObject) and resizing_text_corner is not None:
+                        self.resizing_text_corner = resizing_text_corner
+                    else:
+                        self.resizing_text_corner = None
                 return
 
             if self.currentTool == 'eraser':
@@ -486,7 +526,7 @@ class TransparentOverlay(QWidget):
                 # Then lines/circles/freehand
                 if not hit_obj:
                     for obj in reversed(self.objects):
-                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject)) and obj.contains(pos):
+                        if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject) or isinstance(obj, TextObject)) and obj.contains(pos):
                             hit_obj = obj
                             break 
                 
@@ -806,6 +846,36 @@ class TransparentOverlay(QWidget):
                     self._create_rectangle(self.pending_p1, hit_p, filled=(self.currentTool == 'rectangle_filled'), save_history=rect_save)
                 return
             
+            if self.currentTool == 'text':
+                # Similar to rectangle: click-click to define the text box
+                self.press_pos = pos
+                
+                if not self.pending_p1:
+                    # First click - create corner 1
+                    self.pending_p1 = PointObject(pos.x(), pos.y(), 0, size=0)
+                else:
+                    # Second click - show dialog and create text
+                    corner2 = QPoint(pos.x(), pos.y())
+                    
+                    # Open text dialog
+                    dialog = TextDialog(None, self.brushColor)
+                    if dialog.exec():
+                        text = dialog.get_text()
+                        font_size = dialog.get_font_size()
+                        color = dialog.get_color()
+                        
+                        if text.strip():  # Only create if text is not empty
+                            self.save_state()
+                            text_obj = TextObject(self.pending_p1.pos(), corner2, text, font_size, color)
+                            self.objects.append(text_obj)
+                            self.update()
+                    
+                    self.pending_p1 = None
+                    
+                    # Bring overlay back to top
+                    self.interacted.emit()
+                return
+            
             if self.currentTool == 'pen':
                 self.drawing = True
                 # self.save_state() # Moved to release to avoid empty objects? 
@@ -866,10 +936,29 @@ class TransparentOverlay(QWidget):
                 # self.eraser_visual_path.lineTo(QPointF(pos)) # Removed visual trail
 
             elif self.currentTool == 'hand' and self.draggingObject:
-                # Drag logic
-                dx = pos.x() - self.lastDragPoint.x()
-                dy = pos.y() - self.lastDragPoint.y()
-                self.draggingObject.move(dx, dy)
+                # Check if we are resizing a TextObject
+                if isinstance(self.draggingObject, TextObject) and self.resizing_text_corner is not None:
+                    # Resizing logic
+                    if self.resizing_text_corner == 0:
+                        # Corner 1 (Top-Left usually)
+                        self.draggingObject.rect_corner1 = QPoint(pos.x(), pos.y())
+                    elif self.resizing_text_corner == 2:
+                        # Corner 2 (Bottom-Right usually)
+                        self.draggingObject.rect_corner2 = QPoint(pos.x(), pos.y())
+                    elif self.resizing_text_corner == 1:
+                        # Corner 1 Y, Corner 2 X (Top-Right usually)
+                        self.draggingObject.rect_corner1.setY(pos.y())
+                        self.draggingObject.rect_corner2.setX(pos.x())
+                    elif self.resizing_text_corner == 3:
+                        # Corner 1 X, Corner 2 Y (Bottom-Left usually)
+                        self.draggingObject.rect_corner1.setX(pos.x())
+                        self.draggingObject.rect_corner2.setY(pos.y())
+                else:
+                    # Normal Drag logic
+                    dx = pos.x() - self.lastDragPoint.x()
+                    dy = pos.y() - self.lastDragPoint.y()
+                    self.draggingObject.move(dx, dy)
+                
                 self.lastDragPoint = pos
                 # Check for rectangle constraints if moving a point
                 if isinstance(self.draggingObject, PointObject):
