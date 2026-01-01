@@ -434,6 +434,19 @@ class RectangleObject(DrawingObject):
         self.color = color
         self.width = width
         self.filled = filled
+        self.rotation = 0  # Rotation angle in degrees
+        
+        # Store original dimensions (before any rotation)
+        p0_pos = p1_obj.pos()
+        p2_pos = p3_obj.pos()
+        self.original_half_width = abs(p2_pos.x() - p0_pos.x()) / 2
+        self.original_half_height = abs(p2_pos.y() - p0_pos.y()) / 2
+        
+        # Store original center
+        self.original_center = QPointF(
+            (p0_pos.x() + p2_pos.x()) / 2,
+            (p0_pos.y() + p2_pos.y()) / 2
+        )
     
     def draw(self, painter, overlay_rect=None):
         pen_width = 1 if self.filled else self.width
@@ -446,10 +459,10 @@ class RectangleObject(DrawingObject):
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
         
-        # Draw 4 segments
+        # Get current point positions (already rotated by rotate() method)
         pts = [p.pos() for p in self.points]
         
-        # Draw Polygon for filled shape
+        # Draw Polygon - points are already in their final rotated positions
         painter.drawPolygon(pts)
 
     def contains(self, point, tolerance=None):
@@ -492,6 +505,68 @@ class RectangleObject(DrawingObject):
     def move(self, dx, dy):
         for p in self.points:
             p.move(dx, dy)
+    
+    def get_center(self):
+        """Calculate and return the center point of the rectangle"""
+        pts = [p.pos() for p in self.points]
+        cx = sum(p.x() for p in pts) / 4
+        cy = sum(p.y() for p in pts) / 4
+        return QPointF(cx, cy)
+    
+    def get_rotation_handle_pos(self):
+        """Get position for the rotation handle (above top-right corner)"""
+        center = self.get_center()
+        # Get top-right point (assuming p2 is top-right)
+        top_right = self.points[1].pos()
+        
+        # Position handle 30 pixels above and to the right
+        handle_x = top_right.x() + 10
+        handle_y = top_right.y() - 30
+        
+        return QPoint(int(handle_x), int(handle_y))
+    
+    def rotate(self, angle_degrees):
+        """Rotate the rectangle by the given angle around its center"""
+        import math
+        
+        # Store the absolute rotation
+        self.rotation = angle_degrees
+        
+        # Use the current center (which may have moved)
+        center = self.get_center()
+        cx, cy = center.x(), center.y()
+        
+        # Use the stored original dimensions (not recalculated)
+        half_width = self.original_half_width
+        half_height = self.original_half_height
+        
+        # Define the 4 corners in local coordinates (relative to center)
+        # Assuming: p0=top-left, p1=top-right, p2=bottom-right, p3=bottom-left
+        local_corners = [
+            (-half_width, -half_height),  # Top-left
+            (half_width, -half_height),   # Top-right
+            (half_width, half_height),    # Bottom-right
+            (-half_width, half_height)    # Bottom-left
+        ]
+        
+        # Convert angle to radians
+        angle_rad = math.radians(angle_degrees)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        
+        # Rotate each corner and update point positions
+        for i, (lx, ly) in enumerate(local_corners):
+            # Apply rotation matrix
+            rotated_x = lx * cos_a - ly * sin_a
+            rotated_y = lx * sin_a + ly * cos_a
+            
+            # Convert back to global coordinates
+            new_x = cx + rotated_x
+            new_y = cy + rotated_y
+            
+            # Update the point's position
+            self.points[i].x = int(new_x)
+            self.points[i].y = int(new_y)
 
 class FreehandObject(DrawingObject):
     def __init__(self, color=Qt.GlobalColor.black, width=3):

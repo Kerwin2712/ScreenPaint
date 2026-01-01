@@ -68,6 +68,12 @@ class TransparentOverlay(QWidget):
         self.pasting_preview = False  # True when showing paste preview
         self.paste_object = None  # Object being previewed for paste
         self.paste_offset = QPoint(0, 0)  # Offset from cursor to object origin
+        
+        # Rotation Support
+        self.rotation_mode = False  # True when rotating a rectangle
+        self.rotating_rectangle = None  # Rectangle being rotated
+        self.rotation_start_angle = 0  # Initial angle when rotation started
+        self.hovered_rectangle = None  # Rectangle currently under cursor
 
 
         layout = QVBoxLayout()
@@ -1222,7 +1228,7 @@ class TransparentOverlay(QWidget):
         self.update()
 
     def keyPressEvent(self, event):
-        """Handle keyboard shortcuts for copy, paste, delete, and undo/redo"""
+        """Handle keyboard shortcuts for copy, paste, delete, undo/redo, and rotation"""
         # Ctrl+C: Copy
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self._copy_selected_object()
@@ -1256,6 +1262,16 @@ class TransparentOverlay(QWidget):
             self._delete_selected_object()
             event.accept()
         
+        # Left Arrow: Rotate selected rectangle counter-clockwise
+        elif event.key() == Qt.Key.Key_Left:
+            self._rotate_selected_rectangle(-5)  # Rotate -5 degrees
+            event.accept()
+        
+        # Right Arrow: Rotate selected rectangle clockwise
+        elif event.key() == Qt.Key.Key_Right:
+            self._rotate_selected_rectangle(5)  # Rotate +5 degrees
+            event.accept()
+        
         else:
             super().keyPressEvent(event)
     
@@ -1275,7 +1291,6 @@ class TransparentOverlay(QWidget):
                 copied_obj = self._deep_copy_object(obj_to_copy)
                 if copied_obj:
                     self.clipboard = [copied_obj]  # Store as list for future multi-select support
-                    print(f"Copied object: {type(obj_to_copy).__name__}")
             except Exception as e:
                 print(f"Error copying object: {e}")
     
@@ -1295,7 +1310,6 @@ class TransparentOverlay(QWidget):
                 self.paste_offset = QPoint(0, 0)
                 self.setCursor(Qt.CursorShape.CrossCursor)
                 self.update()
-                print("Paste preview activated - click to place, Esc to cancel")
         except Exception as e:
             print(f"Error activating paste preview: {e}")
     
@@ -1305,7 +1319,6 @@ class TransparentOverlay(QWidget):
         self.paste_object = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.update()
-        print("Paste cancelled")
     
     def _finalize_paste(self, pos):
         """Finalize paste at the given position"""
@@ -1321,8 +1334,6 @@ class TransparentOverlay(QWidget):
         for obj in objects_to_add:
             self.objects.append(obj)
         
-        print(f"Pasted object: {type(self.paste_object).__name__}")
-        
         # Exit preview mode
         self.pasting_preview = False
         self.paste_object = None
@@ -1334,11 +1345,9 @@ class TransparentOverlay(QWidget):
         obj_to_delete = self.draggingObject if self.draggingObject else self.selected_object
         
         if not obj_to_delete:
-            print("No object selected to delete")
             return
         
         if obj_to_delete not in self.objects:
-            print("Selected object not found in objects list")
             return
         
         self.save_state()  # Save for undo
@@ -1359,10 +1368,8 @@ class TransparentOverlay(QWidget):
             self.selected_object = None
             self.draggingObject = None
             self.update()
-            print(f"Deleted {type(obj_to_delete).__name__}")
             return
         else:
-            print(f"Unknown object type: {type(obj_to_delete).__name__}")
             return
         
         # Erase with a small tolerance to ensure we hit the object
@@ -1371,7 +1378,30 @@ class TransparentOverlay(QWidget):
         self.selected_object = None
         self.draggingObject = None
         self.update()
-        print(f"Deleted {type(obj_to_delete).__name__}")
+    
+    def _rotate_selected_rectangle(self, angle_increment):
+        """Rotate the selected rectangle by the given angle increment"""
+        obj_to_rotate = self.draggingObject if self.draggingObject else self.selected_object
+        
+        if not obj_to_rotate:
+            return
+        
+        if not isinstance(obj_to_rotate, RectangleObject):
+            return
+        
+        if obj_to_rotate not in self.objects:
+            return
+        
+        self.save_state()  # Save for undo
+        
+        # Calculate new rotation angle
+        new_angle = obj_to_rotate.rotation + angle_increment
+        new_angle = new_angle % 360  # Normalize to 0-360 range
+        
+        # Call the rotate method which updates point positions
+        obj_to_rotate.rotate(new_angle)
+        
+        self.update()
     
     def _deep_copy_object(self, obj):
         """Create a deep copy of a geometric object and all its dependencies
@@ -1401,12 +1431,12 @@ class TransparentOverlay(QWidget):
             new_radius_param = obj.radius_param
             if obj.type == 'center_point' and isinstance(obj.radius_param, PointObject):
                 new_radius_param = PointObject(obj.radius_param.x, obj.radius_param.y, self.pointIdCounter + 1, 
-                                               color=obj.radius_param.color, size=obj.radius_param.size)
+                color=obj.radius_param.color, size=obj.radius_param.size)
             elif obj.type == 'compass' and isinstance(obj.radius_param, tuple):
                 p1 = PointObject(obj.radius_param[0].x, obj.radius_param[0].y, self.pointIdCounter + 1,
-                                color=obj.radius_param[0].color, size=obj.radius_param[0].size)
+                color=obj.radius_param[0].color, size=obj.radius_param[0].size)
                 p2 = PointObject(obj.radius_param[1].x, obj.radius_param[1].y, self.pointIdCounter + 2,
-                                color=obj.radius_param[1].color, size=obj.radius_param[1].size)
+                color=obj.radius_param[1].color, size=obj.radius_param[1].size)
                 new_radius_param = (p1, p2)
             
             # Copy the circle
@@ -1423,7 +1453,7 @@ class TransparentOverlay(QWidget):
             # Copy the rectangle
             if len(new_points) == 4:
                 new_rect = RectangleObject(new_points[0], new_points[1], new_points[2], new_points[3], 
-                                          color=obj.color, width=obj.width, filled=obj.filled)
+                color=obj.color, width=obj.width, filled=obj.filled)
                 return new_rect
         
         elif isinstance(obj, FreehandObject):
