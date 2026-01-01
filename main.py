@@ -100,8 +100,12 @@ def main():
     toolbar.hide_toolbar.connect(hide_tools)
     toolbar.close_app.connect(close_start)
     
-    # Preferences
-    toolbar.preferences_clicked.connect(overlay._show_preferences)
+    # Preferences - update toolbar after saving
+    def handle_preferences():
+        overlay._show_preferences()
+        toolbar.update_from_preferences()
+    
+    toolbar.preferences_clicked.connect(handle_preferences)
     
     # Tool Connections
     toolbar.tool_pen.connect(overlay.set_tool_pen)

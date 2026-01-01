@@ -1,6 +1,7 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer, QEvent
 from PyQt6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QBoxLayout, QMenu, QToolTip
 from PyQt6.QtGui import QAction, QCursor
+from preferences_manager import PreferencesManager
 
 
 class FloatingMenu(QWidget):
@@ -134,10 +135,6 @@ class Toolbar(QWidget):
         self.dragging = False
         self.grip_dragging = False
         self.offset = QPoint()
-        # Dragging state
-        self.dragging = False
-        self.grip_dragging = False
-        self.offset = QPoint()
         self.grip_start_pos = QPoint()
 
         # Menu Timer
@@ -147,12 +144,31 @@ class Toolbar(QWidget):
         self.hide_timer.setInterval(200) # 200ms delay before hiding
         self.hide_timer.timeout.connect(self.hide_active_menu)
         
+        # Load preferences
+        self.prefs_manager = PreferencesManager()
+        self.button_order = self.prefs_manager.load_button_order()
+        self.tool_visibility = self.prefs_manager.load_tool_visibility()
+        
+        # Button references (populated by _create_buttons)
+        self.buttons = {}
+        
         layout = QHBoxLayout()
-        # Add some margin so there's space to grab if needed, or tight pack with handle
         layout.setContentsMargins(5, 5, 5, 5)
         self.setLayout(layout)
         
-        # Style for buttons
+        # Create all buttons in configured order
+        self._create_all_buttons()
+    
+    def _create_all_buttons(self):
+        """Create all toolbar buttons dynamically based on preferences"""
+        # Reset specific button references to avoid accessing deleted objects
+        self.btn_line = None
+        self.btn_rect = None
+        self.btn_cam = None
+        
+        layout = self.layout()
+        
+        # Button style
         btn_style = """
             QPushButton {
                 background-color: #333333;
@@ -166,8 +182,58 @@ class Toolbar(QWidget):
                 background-color: #444444;
             }
         """
-
-        # Drag Handle (Grip)
+        
+        # Menu style for dropdowns
+        menu_style = """
+            QMenu {
+                background-color: #333333;
+                color: white;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                padding: 5px 10px;
+            }
+            QMenu::item:selected {
+                background-color: #444444;
+            }
+        """
+        
+        # Create buttons in the configured order
+        for button_id in self.button_order:
+            # Skip if not visible
+            if not self.tool_visibility.get(button_id, True):
+                continue
+            
+            # Create appropriate button
+            if button_id == 'grip':
+                self._add_grip_button(layout)
+            elif button_id == 'pen':
+                self._add_pen_button(layout, btn_style)
+            elif button_id == 'line':
+                self._add_line_button(layout, btn_style, menu_style)
+            elif button_id == 'shapes':
+                self._add_shapes_button(layout, btn_style, menu_style)
+            elif button_id == 'camera':
+                self._add_camera_button(layout, btn_style, menu_style)
+            elif button_id == 'hand':
+                self._add_hand_button(layout, btn_style)
+            elif button_id == 'paint':
+                self._add_paint_button(layout, btn_style)
+            elif button_id == 'undo':
+                self._add_undo_button(layout, btn_style)
+            elif button_id == 'redo':
+                self._add_redo_button(layout, btn_style)
+            elif button_id == 'eraser':
+                self._add_eraser_button(layout, btn_style)
+            elif button_id == 'clear':
+                self._add_clear_button(layout, btn_style)
+            elif button_id == 'preferences':
+                self._add_preferences_button(layout, btn_style)
+            elif button_id == 'close':
+                self._add_close_button(layout)
+    
+    def _add_grip_button(self, layout):
+        """Add grip/drag handle"""
         self.label_grip = QLabel("✥")
         self.label_grip.setStyleSheet("""
             QLabel {
@@ -185,37 +251,27 @@ class Toolbar(QWidget):
         self.label_grip.setToolTip("Arrastrar para mover. Clic para ocultar.")
         self.label_grip.installEventFilter(self)
         layout.addWidget(self.label_grip)
-
-        # Pen Button
+        self.buttons['grip'] = self.label_grip
+    
+    def _add_pen_button(self, layout, btn_style):
+        """Add pen button"""
         self.btn_pen = QPushButton("✏️")
         self.btn_pen.setToolTip("Lápiz")
         self.btn_pen.setStyleSheet(btn_style)
         self.btn_pen.clicked.connect(self.tool_pen.emit)
         self.btn_pen.installEventFilter(self)
         layout.addWidget(self.btn_pen)
-
-        # Line Tool Button with Menu
+        self.buttons['pen'] = self.btn_pen
+    
+    def _add_line_button(self, layout, btn_style, menu_style):
+        """Add line tools button with menu"""
         self.btn_line = QPushButton("📏")
         self.btn_line.setToolTip("Herramientas de Línea")
         self.btn_line.setStyleSheet(btn_style)
         
-        # Create Menu
         self.line_menu = QMenu(self)
-        self.line_menu.setStyleSheet("""
-            QMenu {
-                background-color: #333333;
-                color: white;
-                border: 1px solid #555555;
-            }
-            QMenu::item {
-                padding: 5px 10px;
-            }
-            QMenu::item:selected {
-                background-color: #444444;
-            }
-        """)
+        self.line_menu.setStyleSheet(menu_style)
         
-        # Add Actions
         action_point = QAction("Punto", self)
         action_point.triggered.connect(self.tool_point.emit)
         self.line_menu.addAction(action_point)
@@ -224,7 +280,7 @@ class Toolbar(QWidget):
         action_segment = QAction("Segmento", self)
         action_segment.triggered.connect(self.tool_line_segment.emit)
         self.line_menu.addAction(action_segment)
-
+        
         action_ray = QAction("Semirecta", self)
         action_ray.triggered.connect(self.tool_line_ray.emit)
         self.line_menu.addAction(action_ray)
@@ -241,7 +297,6 @@ class Toolbar(QWidget):
         action_vertical.triggered.connect(self.tool_line_vertical.emit)
         self.line_menu.addAction(action_vertical)
         
-        # Tools requiring a reference line
         self.line_menu.addSeparator()
         
         action_parallel = QAction("Paralela", self)
@@ -251,46 +306,31 @@ class Toolbar(QWidget):
         action_perpendicular = QAction("Perpendicular", self)
         action_perpendicular.triggered.connect(self.tool_line_perpendicular.emit)
         self.line_menu.addAction(action_perpendicular)
-
-        # Set Menu via built-in setMenu logic (though we trigger it on hover)
+        
         self.btn_line.setMenu(self.line_menu)
         self.line_menu.installEventFilter(self)
-        
-        # Rectangle/Shape Tool Button
+        self.btn_line.installEventFilter(self)
+        layout.addWidget(self.btn_line)
+        self.buttons['line'] = self.btn_line
+    
+    def _add_shapes_button(self, layout, btn_style, menu_style):
+        """Add shapes button with menu"""
         self.btn_rect = QPushButton("🔳")
         self.btn_rect.setToolTip("Figuras Geométricas")
         self.btn_rect.setStyleSheet(btn_style)
         
-        # Create Rectangle Menu
         self.rect_menu = QMenu(self)
-        self.rect_menu.setStyleSheet("""
-            QMenu {
-                background-color: #333333;
-                color: white;
-                border: 1px solid #555555;
-            }
-            QMenu::item {
-                padding: 5px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #444444;
-            }
-        """)
+        self.rect_menu.setStyleSheet(menu_style)
         
         action_rect = QAction("Rectángulo", self)
         action_rect.triggered.connect(self.tool_rectangle.emit)
         self.rect_menu.addAction(action_rect)
-
+        
         action_rect_filled = QAction("Rectángulo Relleno", self)
         action_rect_filled.triggered.connect(self.tool_rectangle_filled.emit)
         self.rect_menu.addAction(action_rect_filled)
         
         self.rect_menu.addSeparator()
-        
-        # Add Circle Tools here
-        # action_radius = QAction("Círculo (Centro y Radio)", self)
-        # action_radius.triggered.connect(self.tool_circle_radius.emit)
-        # self.rect_menu.addAction(action_radius)
         
         action_center_point = QAction("Círculo", self)
         action_center_point.triggered.connect(self.tool_circle_center_point.emit)
@@ -300,24 +340,20 @@ class Toolbar(QWidget):
         action_circle_filled.triggered.connect(self.tool_circle_filled.emit)
         self.rect_menu.addAction(action_circle_filled)
         
-        # action_compass = QAction("Círculo (Compás)", self)
-        # action_compass.triggered.connect(self.tool_circle_compass.emit)
-        # self.rect_menu.addAction(action_compass)
-        
         self.btn_rect.setMenu(self.rect_menu)
         self.rect_menu.installEventFilter(self)
-        layout.addWidget(self.btn_rect)
-
-        # Hook up hover
         self.btn_rect.installEventFilter(self)
-
-        # Camera Button
+        layout.addWidget(self.btn_rect)
+        self.buttons['shapes'] = self.btn_rect
+    
+    def _add_camera_button(self, layout, btn_style, menu_style):
+        """Add camera button with menu"""
         self.btn_cam = QPushButton("📷")
         self.btn_cam.setToolTip("Cámara")
         self.btn_cam.setStyleSheet(btn_style)
         
         self.cam_menu = QMenu(self)
-        self.cam_menu.setStyleSheet(self.rect_menu.styleSheet()) # Reuse style
+        self.cam_menu.setStyleSheet(menu_style)
         
         act_cap_full = QAction("Capturar Pantalla", self)
         act_cap_full.triggered.connect(self.tool_capture_full.emit)
@@ -337,75 +373,92 @@ class Toolbar(QWidget):
         act_rec_crop.triggered.connect(self.tool_record_crop.emit)
         self.cam_menu.addAction(act_rec_crop)
         
-        self.btn_cam.setMenu(self.cam_menu)
-
         self.cam_menu.addSeparator()
         
-        # Audio Toggle
         self.act_audio = QAction("Grabar Audio", self)
         self.act_audio.setCheckable(True)
-        self.act_audio.setChecked(True) 
+        self.act_audio.setChecked(True)
         self.act_audio.toggled.connect(self.tool_toggle_audio.emit)
         self.cam_menu.addAction(self.act_audio)
-
+        
+        self.btn_cam.setMenu(self.cam_menu)
         self.cam_menu.installEventFilter(self)
         self.btn_cam.installEventFilter(self)
-        
         layout.addWidget(self.btn_cam)
-        
-        # Install Event Filter to handle Hover
-        self.btn_line.installEventFilter(self)
-        
-        layout.addWidget(self.btn_line)
-
-        # Move/Hand Button
+        self.buttons['camera'] = self.btn_cam
+    
+    def _add_hand_button(self, layout, btn_style):
+        """Add hand/move button"""
         self.btn_hand = QPushButton("✋")
         self.btn_hand.setToolTip("Mover Objetos")
         self.btn_hand.setStyleSheet(btn_style)
         self.btn_hand.clicked.connect(self.tool_hand.emit)
         self.btn_hand.installEventFilter(self)
         layout.addWidget(self.btn_hand)
-
-        # Paint Bucket Button
+        self.buttons['hand'] = self.btn_hand
+    
+    def _add_paint_button(self, layout, btn_style):
+        """Add paint bucket button"""
         self.btn_paint = QPushButton("🎨")
         self.btn_paint.setToolTip("Color")
         self.btn_paint.setStyleSheet(btn_style)
         self.btn_paint.clicked.connect(self.tool_paint.emit)
         self.btn_paint.installEventFilter(self)
         layout.addWidget(self.btn_paint)
-
-        # Undo/Redo Buttons (Before Eraser)
+        self.buttons['paint'] = self.btn_paint
+    
+    def _add_undo_button(self, layout, btn_style):
+        """Add undo button"""
         self.btn_undo = QPushButton("↩️")
         self.btn_undo.setToolTip("Deshacer")
         self.btn_undo.setStyleSheet(btn_style)
         self.btn_undo.clicked.connect(self.tool_undo.emit)
         self.btn_undo.installEventFilter(self)
         layout.addWidget(self.btn_undo)
-
+        self.buttons['undo'] = self.btn_undo
+    
+    def _add_redo_button(self, layout, btn_style):
+        """Add redo button"""
         self.btn_redo = QPushButton("↪️")
         self.btn_redo.setToolTip("Rehacer")
         self.btn_redo.setStyleSheet(btn_style)
         self.btn_redo.clicked.connect(self.tool_redo.emit)
         self.btn_redo.installEventFilter(self)
         layout.addWidget(self.btn_redo)
-
-        # Eraser Button
+        self.buttons['redo'] = self.btn_redo
+    
+    def _add_eraser_button(self, layout, btn_style):
+        """Add eraser button"""
         self.btn_eraser = QPushButton("🧹")
         self.btn_eraser.setToolTip("Borrador")
         self.btn_eraser.setStyleSheet(btn_style)
         self.btn_eraser.clicked.connect(self.tool_eraser.emit)
         self.btn_eraser.installEventFilter(self)
         layout.addWidget(self.btn_eraser)
-
-        # Clear All Button
+        self.buttons['eraser'] = self.btn_eraser
+    
+    def _add_clear_button(self, layout, btn_style):
+        """Add clear all button"""
         self.btn_clear = QPushButton("🗑️")
         self.btn_clear.setToolTip("Limpiar Todo")
         self.btn_clear.setStyleSheet(btn_style)
         self.btn_clear.clicked.connect(self.tool_clear.emit)
         self.btn_clear.installEventFilter(self)
         layout.addWidget(self.btn_clear)
-
-        # Close App Button
+        self.buttons['clear'] = self.btn_clear
+    
+    def _add_preferences_button(self, layout, btn_style):
+        """Add preferences button"""
+        self.btn_preferences = QPushButton("⚙️")
+        self.btn_preferences.setToolTip("Preferencias")
+        self.btn_preferences.setStyleSheet(btn_style)
+        self.btn_preferences.clicked.connect(self.preferences_clicked.emit)
+        self.btn_preferences.installEventFilter(self)
+        layout.addWidget(self.btn_preferences)
+        self.buttons['preferences'] = self.btn_preferences
+    
+    def _add_close_button(self, layout):
+        """Add close button"""
         self.btn_close = QPushButton("❌")
         self.btn_close.setToolTip("Cerrar Programa")
         self.btn_close.setStyleSheet("""
@@ -424,14 +477,28 @@ class Toolbar(QWidget):
         self.btn_close.clicked.connect(self.close_app.emit)
         self.btn_close.installEventFilter(self)
         layout.addWidget(self.btn_close)
+        self.buttons['close'] = self.btn_close
+    
+    def update_from_preferences(self):
+        """Reload preferences and rebuild toolbar"""
+        # Reload preferences
+        self.button_order = self.prefs_manager.load_button_order()
+        self.tool_visibility = self.prefs_manager.load_tool_visibility()
         
-        # Preferences Button (Gear icon)
-        self.btn_preferences = QPushButton("⚙️")
-        self.btn_preferences.setToolTip("Preferencias")
-        self.btn_preferences.setStyleSheet(btn_style)
-        self.btn_preferences.clicked.connect(self.preferences_clicked.emit)
-        self.btn_preferences.installEventFilter(self)
-        layout.addWidget(self.btn_preferences)
+        # Clear existing buttons
+        layout = self.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        self.buttons.clear()
+        
+        # Recreate buttons
+        self._create_all_buttons()
+        
+        # Force layout update
+        self.adjustSize()
 
     def hide_active_menu(self):
         if self.active_menu:
@@ -471,17 +538,17 @@ class Toolbar(QWidget):
                 global_pos = QCursor.pos()
                 
                 # Check Line Button
-                if self.btn_line.rect().contains(self.btn_line.mapFromGlobal(global_pos)):
+                if self.btn_line and self.btn_line.isVisible() and self.btn_line.rect().contains(self.btn_line.mapFromGlobal(global_pos)):
                     if self.active_menu != self.line_menu:
                         self.show_menu(self.btn_line, self.line_menu)
                         return True
                 # Check Rect Button
-                elif self.btn_rect.rect().contains(self.btn_rect.mapFromGlobal(global_pos)):
+                elif self.btn_rect and self.btn_rect.isVisible() and self.btn_rect.rect().contains(self.btn_rect.mapFromGlobal(global_pos)):
                     if self.active_menu != self.rect_menu:
                         self.show_menu(self.btn_rect, self.rect_menu)
                         return True
                 # Check Cam Button
-                elif self.btn_cam.rect().contains(self.btn_cam.mapFromGlobal(global_pos)):
+                elif self.btn_cam and self.btn_cam.isVisible() and self.btn_cam.rect().contains(self.btn_cam.mapFromGlobal(global_pos)):
                     if self.active_menu != self.cam_menu:
                         self.show_menu(self.btn_cam, self.cam_menu)
                         return True
@@ -507,7 +574,12 @@ class Toolbar(QWidget):
 
         elif event.type() == QEvent.Type.Leave:
             # If leaving a button or menu, start timer to hide
-            if source in [self.btn_line, self.btn_rect, self.btn_cam] or isinstance(source, QMenu):
+            buttons_to_check = []
+            if self.btn_line: buttons_to_check.append(self.btn_line)
+            if self.btn_rect: buttons_to_check.append(self.btn_rect)
+            if self.btn_cam: buttons_to_check.append(self.btn_cam)
+            
+            if source in buttons_to_check or isinstance(source, QMenu):
                 self.hide_timer.start()
 
         return super().eventFilter(source, event)

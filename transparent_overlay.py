@@ -1449,6 +1449,9 @@ class TransparentOverlay(QWidget):
             self.keyboard_shortcuts = dialog.get_shortcuts()
             # Rebuild key->tool mapping
             self.key_to_tool = {key_code: tool for tool, (key_code, _) in self.keyboard_shortcuts.items()}
+            
+            # Get button order and visibility (saved to CSV by dialog)
+            # Toolbar will reload from CSV when notified
         
         # Return focus to overlay so keyboard shortcuts work immediately
         self.setFocus()

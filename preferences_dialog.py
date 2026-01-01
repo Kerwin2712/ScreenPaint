@@ -1,11 +1,15 @@
 """
 Preferences Dialog
-Main preferences window for configuring keyboard shortcuts
+Main preferences window with tabbed interface for:
+- Keyboard shortcuts
+- Button order
+- Tool visibility
 """
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                               QTableWidget, QTableWidgetItem, QLabel, QMessageBox,
-                              QHeaderView)
+                              QHeaderView, QTabWidget, QWidget, QListWidget, QCheckBox,
+                              QGroupBox)
 from PyQt6.QtCore import Qt
 from key_capture_dialog import KeyCaptureDialog
 from preferences_manager import PreferencesManager
@@ -15,45 +19,33 @@ class PreferencesDialog(QDialog):
         super().__init__(parent)
         self.current_shortcuts = current_shortcuts.copy()
         self.preferences_manager = PreferencesManager()
+        
+        # Load button order and visibility
+        self.button_order = self.preferences_manager.load_button_order()
+        self.tool_visibility = self.preferences_manager.load_tool_visibility()
+        
         self._setup_ui()
-        self._load_shortcuts_to_table()
     
     def _setup_ui(self):
-        """Setup the preferences dialog UI"""
-        self.setWindowTitle("Preferencias - Atajos de Teclado")
+        """Setup the tabbed preferences dialog UI"""
+        self.setWindowTitle("Preferencias")
         self.setModal(True)
-        self.setMinimumSize(500, 400)
+        self.setMinimumSize(600, 500)
         
         layout = QVBoxLayout()
         
-        # Title
-        title = QLabel("Configurar Atajos de Teclado")
-        title.setStyleSheet("font-size: 14pt; font-weight: bold; padding: 10px;")
-        layout.addWidget(title)
+        # Create tab widget
+        self.tabs = QTabWidget()
         
-        # Instructions
-        instructions = QLabel("Haz clic en 'Cambiar' para asignar un nuevo atajo a cada herramienta.")
-        instructions.setStyleSheet("padding: 5px; color: #666;")
-        layout.addWidget(instructions)
+        # Add tabs
+        self.tabs.addTab(self._create_shortcuts_tab(), "Atajos de Teclado")
+        self.tabs.addTab(self._create_button_order_tab(), "Orden de Botones")
+        self.tabs.addTab(self._create_visibility_tab(), "Herramientas Visibles")
         
-        # Table
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Herramienta", "Atajo Actual", ""])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        layout.addWidget(self.table)
+        layout.addWidget(self.tabs)
         
-        # Buttons
+        # Bottom buttons
         button_layout = QHBoxLayout()
-        
-        self.restore_button = QPushButton("Restaurar Predeterminados")
-        self.restore_button.clicked.connect(self._restore_defaults)
-        button_layout.addWidget(self.restore_button)
-        
         button_layout.addStretch()
         
         self.save_button = QPushButton("Guardar")
@@ -69,9 +61,43 @@ class PreferencesDialog(QDialog):
         layout.addLayout(button_layout)
         self.setLayout(layout)
     
+    # ===== TAB 1: KEYBOARD SHORTCUTS =====
+    
+    def _create_shortcuts_tab(self):
+        """Create keyboard shortcuts configuration tab"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Instructions
+        instructions = QLabel("Haz clic en 'Cambiar' para asignar un nuevo atajo a cada herramienta.")
+        instructions.setStyleSheet("padding: 5px; color: #666;")
+        layout.addWidget(instructions)
+        
+        # Table
+        self.shortcuts_table = QTableWidget()
+        self.shortcuts_table.setColumnCount(3)
+        self.shortcuts_table.setHorizontalHeaderLabels(["Herramienta", "Atajo Actual", ""])
+        self.shortcuts_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.shortcuts_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.shortcuts_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.shortcuts_table.verticalHeader().setVisible(False)
+        self.shortcuts_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        layout.addWidget(self.shortcuts_table)
+        
+        # Load shortcuts to table
+        self._load_shortcuts_to_table()
+        
+        # Restore button
+        restore_button = QPushButton("Restaurar Predeterminados")
+        restore_button.clicked.connect(self._restore_default_shortcuts)
+        layout.addWidget(restore_button)
+        
+        tab.setLayout(layout)
+        return tab
+    
     def _load_shortcuts_to_table(self):
         """Load current shortcuts into the table"""
-        self.table.setRowCount(len(self.current_shortcuts))
+        self.shortcuts_table.setRowCount(len(self.current_shortcuts))
         
         row = 0
         for tool, (key_code, key_name) in self.current_shortcuts.items():
@@ -79,19 +105,19 @@ class PreferencesDialog(QDialog):
             tool_display = self.preferences_manager.get_tool_name_display(tool)
             tool_item = QTableWidgetItem(tool_display)
             tool_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.table.setItem(row, 0, tool_item)
+            self.shortcuts_table.setItem(row, 0, tool_item)
             
             # Current shortcut
             shortcut_item = QTableWidgetItem(key_name)
             shortcut_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             shortcut_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            shortcut_item.setData(Qt.ItemDataRole.UserRole, tool)  # Store tool name
-            self.table.setItem(row, 1, shortcut_item)
+            shortcut_item.setData(Qt.ItemDataRole.UserRole, tool)
+            self.shortcuts_table.setItem(row, 1, shortcut_item)
             
             # Change button
             change_button = QPushButton("Cambiar")
             change_button.clicked.connect(lambda checked, t=tool, r=row: self._change_shortcut(t, r))
-            self.table.setCellWidget(row, 2, change_button)
+            self.shortcuts_table.setCellWidget(row, 2, change_button)
             
             row += 1
     
@@ -108,16 +134,16 @@ class PreferencesDialog(QDialog):
                         QMessageBox.warning(
                             self,
                             "Atajo Duplicado",
-                            f"El atajo '{key_name}' ya está asignado a '{tool_display}'.\n"
+                            f"El atajo '{key_name}' ya está asignado a '{tool_display}'.\\n"
                             f"Por favor elige otro atajo."
                         )
                         return
                 
                 # Update the shortcut
                 self.current_shortcuts[tool] = (key_code, key_name)
-                self.table.item(row, 1).setText(key_name)
+                self.shortcuts_table.item(row, 1).setText(key_name)
     
-    def _restore_defaults(self):
+    def _restore_default_shortcuts(self):
         """Restore default shortcuts"""
         reply = QMessageBox.question(
             self,
@@ -130,20 +156,188 @@ class PreferencesDialog(QDialog):
             self.current_shortcuts = self.preferences_manager.default_shortcuts.copy()
             self._load_shortcuts_to_table()
     
+    # ===== TAB 2: BUTTON ORDER =====
+    
+    def _create_button_order_tab(self):
+        """Create button order configuration tab"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Instructions
+        instructions = QLabel("Usa los botones para reordenar las herramientas del menú.")
+        instructions.setStyleSheet("padding: 5px; color: #666;")
+        layout.addWidget(instructions)
+        
+        # List widget for buttons
+        self.order_list = QListWidget()
+        for button_id in self.button_order:
+            button_name = self.preferences_manager.get_button_name_display(button_id)
+            self.order_list.addItem(f"{button_name}")
+            self.order_list.item(self.order_list.count() - 1).setData(Qt.ItemDataRole.UserRole, button_id)
+        layout.addWidget(self.order_list)
+        
+        # Buttons for reordering
+        button_layout = QHBoxLayout()
+        
+        move_up_btn = QPushButton("▲ Subir")
+        move_up_btn.clicked.connect(self._move_button_up)
+        button_layout.addWidget(move_up_btn)
+        
+        move_down_btn = QPushButton("▼ Bajar")
+        move_down_btn.clicked.connect(self._move_button_down)
+        button_layout.addWidget(move_down_btn)
+        
+        button_layout.addStretch()
+        
+        restore_order_btn = QPushButton("Restaurar Predeterminados")
+        restore_order_btn.clicked.connect(self._restore_default_order)
+        button_layout.addWidget(restore_order_btn)
+        
+        layout.addLayout(button_layout)
+        tab.setLayout(layout)
+        return tab
+    
+    def _move_button_up(self):
+        """Move selected button up in the list"""
+        current_row = self.order_list.currentRow()
+        if current_row > 0:
+            item = self.order_list.takeItem(current_row)
+            self.order_list.insertItem(current_row - 1, item)
+            self.order_list.setCurrentRow(current_row - 1)
+            # Update internal order
+            self.button_order.insert(current_row - 1, self.button_order.pop(current_row))
+    
+    def _move_button_down(self):
+        """Move selected button down in the list"""
+        current_row = self.order_list.currentRow()
+        if current_row < self.order_list.count() - 1 and current_row >= 0:
+            item = self.order_list.takeItem(current_row)
+            self.order_list.insertItem(current_row + 1, item)
+            self.order_list.setCurrentRow(current_row + 1)
+            # Update internal order
+            self.button_order.insert(current_row + 1, self.button_order.pop(current_row))
+    
+    def _restore_default_order(self):
+        """Restore default button order"""
+        reply = QMessageBox.question(
+            self,
+            "Restaurar Predeterminados",
+            "¿Estás seguro de que quieres restaurar el orden predeterminado?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.button_order = self.preferences_manager.default_button_order.copy()
+            # Rebuild list
+            self.order_list.clear()
+            for button_id in self.button_order:
+                button_name = self.preferences_manager.get_button_name_display(button_id)
+                self.order_list.addItem(f"{button_name}")
+                self.order_list.item(self.order_list.count() - 1).setData(Qt.ItemDataRole.UserRole, button_id)
+    
+    # ===== TAB 3: TOOL VISIBILITY =====
+    
+    def _create_visibility_tab(self):
+        """Create tool visibility configuration tab"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Instructions
+        instructions = QLabel("Selecciona las herramientas que deseas mostrar en el menú.")
+        instructions.setStyleSheet("padding: 5px; color: #666;")
+        layout.addWidget(instructions)
+        
+        # Group for checkboxes
+        self.visibility_checkboxes = {}
+        for button_id in self.preferences_manager.default_button_order:
+            button_name = self.preferences_manager.get_button_name_display(button_id)
+            checkbox = QCheckBox(button_name)
+            checkbox.setChecked(self.tool_visibility.get(button_id, True))
+            self.visibility_checkboxes[button_id] = checkbox
+            layout.addWidget(checkbox)
+        
+        layout.addStretch()
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        select_all_btn = QPushButton("Seleccionar Todo")
+        select_all_btn.clicked.connect(self._select_all_visibility)
+        button_layout.addWidget(select_all_btn)
+        
+        deselect_all_btn = QPushButton("Deseleccionar Todo")
+        deselect_all_btn.clicked.connect(self._deselect_all_visibility)
+        button_layout.addWidget(deselect_all_btn)
+        
+        button_layout.addStretch()
+        
+        restore_vis_btn = QPushButton("Restaurar Predeterminados")
+        restore_vis_btn.clicked.connect(self._restore_default_visibility)
+        button_layout.addWidget(restore_vis_btn)
+        
+        layout.addLayout(button_layout)
+        tab.setLayout(layout)
+        return tab
+    
+    def _select_all_visibility(self):
+        """Select all tools as visible"""
+        for checkbox in self.visibility_checkboxes.values():
+            checkbox.setChecked(True)
+    
+    def _deselect_all_visibility(self):
+        """Deselect all tools"""
+        for checkbox in self.visibility_checkboxes.values():
+            checkbox.setChecked(False)
+    
+    def _restore_default_visibility(self):
+        """Restore default visibility"""
+        reply = QMessageBox.question(
+            self,
+            "Restaurar Predeterminados",
+            "¿Estás seguro de que quieres restaurar la visibilidad predeterminada?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.tool_visibility = self.preferences_manager.default_visibility.copy()
+            for button_id, checkbox in self.visibility_checkboxes.items():
+                checkbox.setChecked(self.tool_visibility.get(button_id, True))
+    
+    # ===== SAVE =====
+    
     def _save_and_close(self):
-        """Save shortcuts and close dialog"""
-        # Validate
+        """Save all preferences and close dialog"""
+        # Validate shortcuts
         is_valid, error_msg = self.preferences_manager.validate_shortcuts(self.current_shortcuts)
         if not is_valid:
             QMessageBox.warning(self, "Error de Validación", error_msg)
             return
         
-        # Save to CSV
-        if self.preferences_manager.save_shortcuts(self.current_shortcuts):
+        # Collect visibility from checkboxes
+        self.tool_visibility = {button_id: cb.isChecked() 
+                               for button_id, cb in self.visibility_checkboxes.items()}
+        
+        # Save all
+        success = True
+        success = success and self.preferences_manager.save_shortcuts(self.current_shortcuts)
+        success = success and self.preferences_manager.save_button_order(self.button_order)
+        success = success and self.preferences_manager.save_tool_visibility(self.tool_visibility)
+        
+        if success:
             self.accept()
         else:
             QMessageBox.critical(self, "Error", "No se pudieron guardar las preferencias.")
     
+    # ===== GETTERS =====
+    
     def get_shortcuts(self):
         """Return the updated shortcuts dictionary"""
         return self.current_shortcuts
+    
+    def get_button_order(self):
+        """Return the updated button order"""
+        return self.button_order
+    
+    def get_tool_visibility(self):
+        """Return the updated tool visibility"""
+        return self.tool_visibility

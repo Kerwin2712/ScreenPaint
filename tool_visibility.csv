@@ -1,0 +1,14 @@
+button_id,visible
+grip,true
+pen,true
+line,true
+shapes,true
+camera,false
+hand,true
+paint,true
+undo,true
+redo,true
+eraser,true
+clear,true
+preferences,true
+close,true
