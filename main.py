@@ -100,6 +100,9 @@ def main():
     toolbar.hide_toolbar.connect(hide_tools)
     toolbar.close_app.connect(close_start)
     
+    # Preferences
+    toolbar.preferences_clicked.connect(overlay._show_preferences)
+    
     # Tool Connections
     toolbar.tool_pen.connect(overlay.set_tool_pen)
     toolbar.tool_eraser.connect(overlay.set_tool_eraser)

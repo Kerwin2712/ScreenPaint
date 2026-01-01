@@ -117,6 +117,9 @@ class Toolbar(QWidget):
     
     # Audio Signal
     tool_toggle_audio = pyqtSignal(bool)
+    
+    # Preferences Signal
+    preferences_clicked = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -421,6 +424,14 @@ class Toolbar(QWidget):
         self.btn_close.clicked.connect(self.close_app.emit)
         self.btn_close.installEventFilter(self)
         layout.addWidget(self.btn_close)
+        
+        # Preferences Button (Gear icon)
+        self.btn_preferences = QPushButton("⚙️")
+        self.btn_preferences.setToolTip("Preferencias")
+        self.btn_preferences.setStyleSheet(btn_style)
+        self.btn_preferences.clicked.connect(self.preferences_clicked.emit)
+        self.btn_preferences.installEventFilter(self)
+        layout.addWidget(self.btn_preferences)
 
     def hide_active_menu(self):
         if self.active_menu:

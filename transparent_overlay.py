@@ -6,6 +6,8 @@ from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor, QPainte
 from PyQt6.QtWidgets import QFileDialog
 from geometric_elements import PointObject, LineObject, CircleObject, RectangleObject, FreehandObject, calculate_intersection
 from capture_screen import take_screenshot
+from preferences_manager import PreferencesManager
+from preferences_dialog import PreferencesDialog
 import copy
 
 # --- Overlay Class ---
@@ -22,7 +24,7 @@ class TransparentOverlay(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # Removed WA_ShowWithoutActivating to allow keyboard shortcuts to work immediately
         self.setMouseTracking(True)
         
         # State
@@ -74,6 +76,12 @@ class TransparentOverlay(QWidget):
         self.rotating_rectangle = None  # Rectangle being rotated
         self.rotation_start_angle = 0  # Initial angle when rotation started
         self.hovered_rectangle = None  # Rectangle currently under cursor
+        
+        # Keyboard Shortcuts
+        self.preferences_manager = PreferencesManager()
+        self.keyboard_shortcuts = self.preferences_manager.load_shortcuts()
+        # Create reverse mapping: key_code -> tool_name
+        self.key_to_tool = {key_code: tool for tool, (key_code, _) in self.keyboard_shortcuts.items()}
 
 
         layout = QVBoxLayout()
@@ -1228,7 +1236,18 @@ class TransparentOverlay(QWidget):
         self.update()
 
     def keyPressEvent(self, event):
-        """Handle keyboard shortcuts for copy, paste, delete, undo/redo, and rotation"""
+        """Handle keyboard shortcuts for copy, paste, delete, undo/redo, rotation, and tool shortcuts"""
+        key = event.key()
+        
+        # Check for tool shortcuts FIRST (before Ctrl combinations)
+        # Only if no modifiers are pressed (except Shift/Alt which might be shortcuts themselves)
+        if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            if key in self.key_to_tool:
+                tool_name = self.key_to_tool[key]
+                self._activate_tool_shortcut(tool_name)
+                event.accept()
+                return
+        
         # Ctrl+C: Copy
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self._copy_selected_object()
@@ -1402,6 +1421,38 @@ class TransparentOverlay(QWidget):
         obj_to_rotate.rotate(new_angle)
         
         self.update()
+    
+    def _activate_tool_shortcut(self, tool_name):
+        """Activate a tool based on its name from keyboard shortcut"""
+        tool_methods = {
+            'pen': self.set_tool_pen,
+            'hand': self.set_tool_hand,
+            'point': self.set_tool_point,
+            'segment': self.set_tool_line_segment,
+            'circle_center_point': self.set_tool_circle_center_point,
+            'rectangle': self.set_tool_rectangle,
+            'eraser': self.set_tool_eraser,
+            'paint': self.set_tool_paint,
+        }
+        
+        if tool_name in tool_methods:
+            tool_methods[tool_name]()
+            # Ensure overlay keeps focus after changing tools
+            self.setFocus()
+            self.activateWindow()
+    
+    def _show_preferences(self):
+        """Show the preferences dialog"""
+        dialog = PreferencesDialog(self.keyboard_shortcuts, self)
+        if dialog.exec() == PreferencesDialog.DialogCode.Accepted:
+            # User saved changes, reload shortcuts
+            self.keyboard_shortcuts = dialog.get_shortcuts()
+            # Rebuild key->tool mapping
+            self.key_to_tool = {key_code: tool for tool, (key_code, _) in self.keyboard_shortcuts.items()}
+        
+        # Return focus to overlay so keyboard shortcuts work immediately
+        self.setFocus()
+        self.activateWindow()
     
     def _deep_copy_object(self, obj):
         """Create a deep copy of a geometric object and all its dependencies
