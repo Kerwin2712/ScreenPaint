@@ -504,6 +504,34 @@ class Toolbar(QWidget):
         if self.active_menu:
             self.active_menu.hide()
             self.active_menu = None
+    
+    def _check_and_hide_menu(self):
+        """Check if cursor is outside both button and menu before hiding"""
+        if not self.active_menu or not self.active_menu.isVisible():
+            return
+        
+        global_pos = QCursor.pos()
+        
+        # Find which button owns the active menu
+        owner_button = None
+        if self.active_menu == self.line_menu and self.btn_line:
+            owner_button = self.btn_line
+        elif self.active_menu == self.rect_menu and self.btn_rect:
+            owner_button = self.btn_rect
+        elif self.active_menu == self.cam_menu and self.btn_cam:
+            owner_button = self.btn_cam
+        
+        if owner_button:
+            # Check if cursor is over the button
+            if owner_button.rect().contains(owner_button.mapFromGlobal(global_pos)):
+                return  # Don't hide, cursor is over button
+        
+        # Check if cursor is over the menu
+        if self.active_menu.rect().contains(self.active_menu.mapFromGlobal(global_pos)):
+            return  # Don't hide, cursor is over menu
+        
+        # Cursor is outside both, safe to hide
+        self.hide_timer.start()
 
     def set_layout_rtl(self, is_rtl):
         direction = QBoxLayout.Direction.RightToLeft if is_rtl else QBoxLayout.Direction.LeftToRight
@@ -573,14 +601,16 @@ class Toolbar(QWidget):
                 return False
 
         elif event.type() == QEvent.Type.Leave:
-            # If leaving a button or menu, start timer to hide
+            # If leaving a button or menu, check if cursor is actually outside both before starting timer
             buttons_to_check = []
             if self.btn_line: buttons_to_check.append(self.btn_line)
             if self.btn_rect: buttons_to_check.append(self.btn_rect)
             if self.btn_cam: buttons_to_check.append(self.btn_cam)
             
             if source in buttons_to_check or isinstance(source, QMenu):
-                self.hide_timer.start()
+                # Use a timer to check cursor position after a brief delay
+                # This prevents flickering when cursor moves between button and menu
+                QTimer.singleShot(50, self._check_and_hide_menu)
 
         return super().eventFilter(source, event)
 

@@ -3,7 +3,7 @@ grip,true
 pen,true
 line,true
 shapes,true
-camera,false
+camera,true
 hand,true
 paint,true
 undo,true

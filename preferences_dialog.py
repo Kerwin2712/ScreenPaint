@@ -7,9 +7,9 @@ Main preferences window with tabbed interface for:
 """
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-                              QTableWidget, QTableWidgetItem, QLabel, QMessageBox,
-                              QHeaderView, QTabWidget, QWidget, QListWidget, QCheckBox,
-                              QGroupBox)
+                                QTableWidget, QTableWidgetItem, QLabel, QMessageBox,
+                                QHeaderView, QTabWidget, QWidget, QListWidget, QCheckBox,
+                                QGroupBox)
 from PyQt6.QtCore import Qt
 from key_capture_dialog import KeyCaptureDialog
 from preferences_manager import PreferencesManager
@@ -315,7 +315,7 @@ class PreferencesDialog(QDialog):
         
         # Collect visibility from checkboxes
         self.tool_visibility = {button_id: cb.isChecked() 
-                               for button_id, cb in self.visibility_checkboxes.items()}
+                                for button_id, cb in self.visibility_checkboxes.items()}
         
         # Save all
         success = True
