@@ -28,7 +28,7 @@ ScreenPaint es una herramienta de productividad diseñada para profesionales, ed
 
 ### 1. Clonar el repositorio
 ```bash
-git clone https://github.com/TuUsuario/ScreenPaint.git
+git clone https://github.com/Kerwin2712/ScreenPaint.git
 cd ScreenPaint
 ```
 
@@ -58,4 +58,4 @@ python main.py
 
 ## 📄 Licencia
 
-Este proyecto está bajo la Licencia MIT.
+Este proyecto está bajo la [Licencia MIT](LICENSE).
