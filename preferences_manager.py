@@ -32,27 +32,37 @@ class PreferencesManager:
             'rectangle': (Qt.Key.Key_R, 'R'),
             'eraser': (Qt.Key.Key_E, 'E'),
             'paint': (Qt.Key.Key_B, 'B'),
+            'text': (Qt.Key.Key_T, 'T'),
+            'rectangle_filled': (Qt.Key.Key_F, 'F'),
+            'circle_filled': (Qt.Key.Key_D, 'D'),
+            'minimize': (Qt.Key.Key_M, 'M'),
         }
     
+        return shortcuts
+    
     def load_shortcuts(self):
-        """Load shortcuts from CSV file, create with defaults if doesn't exist"""
-        if not os.path.exists(self.preferences_file):
-            self.save_shortcuts(self.default_shortcuts)
-            return self.default_shortcuts.copy()
+        """Load shortcuts from CSV file, merge with defaults"""
+        shortcuts = self.default_shortcuts.copy()
         
-        shortcuts = {}
+        if not os.path.exists(self.preferences_file):
+            self.save_shortcuts(shortcuts)
+            return shortcuts
+        
         try:
             with open(self.preferences_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    tool = row['tool']
-                    key_code = int(row['key_code'])
-                    key_name = row['key_name']
-                    shortcuts[tool] = (key_code, key_name)
+                    tool = row.get('tool')
+                    if tool:
+                        try:
+                            key_code = int(row['key_code'])
+                            key_name = row['key_name']
+                            shortcuts[tool] = (key_code, key_name)
+                        except (ValueError, KeyError):
+                            continue
         except Exception as e:
             print(f"Error loading preferences: {e}")
-            return self.default_shortcuts.copy()
-        
+            
         return shortcuts
     
     def save_shortcuts(self, shortcuts):
@@ -90,8 +100,10 @@ class PreferencesManager:
             'clear', 'preferences', 'close'
         ]
     
+        return button_order if button_order else self.default_button_order.copy()
+    
     def load_button_order(self):
-        """Load button order from CSV"""
+        """Load button order from CSV, ensuring all default buttons are present"""
         if not os.path.exists(self.button_order_file):
             self.save_button_order(self.default_button_order)
             return self.default_button_order.copy()
@@ -100,14 +112,19 @@ class PreferencesManager:
         try:
             with open(self.button_order_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                # Sort by position and extract button_id
                 rows = sorted(reader, key=lambda r: int(r['position']))
                 button_order = [row['button_id'] for row in rows]
         except Exception as e:
             print(f"Error loading button order: {e}")
             return self.default_button_order.copy()
+            
+        # Ensure any new default buttons are added if missing
+        existing_set = set(button_order)
+        for btn in self.default_button_order:
+            if btn not in existing_set:
+                button_order.append(btn)
         
-        return button_order if button_order else self.default_button_order.copy()
+        return button_order
     
     def save_button_order(self, button_order):
         """Save button order to CSV"""
@@ -143,25 +160,28 @@ class PreferencesManager:
             'close': True,
         }
     
+        return visibility if visibility else self.default_visibility.copy()
+    
     def load_tool_visibility(self):
-        """Load tool visibility from CSV"""
-        if not os.path.exists(self.visibility_file):
-            self.save_tool_visibility(self.default_visibility)
-            return self.default_visibility.copy()
+        """Load tool visibility from CSV, merge with defaults"""
+        visibility = self.default_visibility.copy()
         
-        visibility = {}
+        if not os.path.exists(self.visibility_file):
+            self.save_tool_visibility(visibility)
+            return visibility
+        
         try:
             with open(self.visibility_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    button_id = row['button_id']
-                    visible = row['visible'].lower() == 'true'
-                    visibility[button_id] = visible
+                    button_id = row.get('button_id')
+                    if button_id:
+                        visible = row['visible'].lower() == 'true'
+                        visibility[button_id] = visible
         except Exception as e:
             print(f"Error loading tool visibility: {e}")
-            return self.default_visibility.copy()
-        
-        return visibility if visibility else self.default_visibility.copy()
+            
+        return visibility
     
     def save_tool_visibility(self, visibility):
         """Save tool visibility to CSV"""
@@ -189,6 +209,10 @@ class PreferencesManager:
             'rectangle': 'Rectángulo',
             'eraser': 'Borrador',
             'paint': 'Balde de Pintura',
+            'text': 'Texto',
+            'rectangle_filled': 'Rectángulo Relleno',
+            'circle_filled': 'Círculo Relleno',
+            'minimize': 'Minimizar Menú',
         }
         return tool_names.get(tool, tool)
     

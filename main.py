@@ -140,6 +140,7 @@ def main():
     toolbar.tool_rectangle_filled.connect(overlay.set_tool_rectangle_filled)
     toolbar.tool_paint.connect(overlay.set_tool_paint)
     toolbar.tool_text.connect(overlay.set_tool_text)
+    overlay.minimize_requested.connect(hide_tools)
     
     # Camera Tools Handlers
     def handle_capture_full():

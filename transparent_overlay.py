@@ -16,6 +16,7 @@ import copy
 class TransparentOverlay(QWidget):
     interacted = pyqtSignal()
     crop_selected = pyqtSignal(QRect)
+    minimize_requested = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -224,6 +225,10 @@ class TransparentOverlay(QWidget):
         self.pending_p1 = None
         self._reset_tool_state()
         self.setCursor(Qt.CursorShape.IBeamCursor)
+        
+    def minimize_menu(self):
+        """Emit signal to minimize the menu"""
+        self.minimize_requested.emit()
 
     def set_tool_capture_crop(self):
         self.currentTool = 'capture_crop'
@@ -1522,6 +1527,10 @@ class TransparentOverlay(QWidget):
             'rectangle': self.set_tool_rectangle,
             'eraser': self.set_tool_eraser,
             'paint': self.set_tool_paint,
+            'text': self.set_tool_text,
+            'rectangle_filled': self.set_tool_rectangle_filled,
+            'circle_filled': self.set_tool_circle_filled,
+            'minimize': self.minimize_menu,
         }
         
         if tool_name in tool_methods:
