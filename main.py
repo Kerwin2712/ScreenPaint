@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt
 from ui.globalkeyfilter import GlobalKeyFilter
 from ui.float_menu import FloatingMenu, Toolbar
 from core.transparent_overlay import TransparentOverlay
-from tools.recording_overlay import ResizableRubberBand
+from tools.recording_overlay import ScreenRecordingOverlay
 from tools.capture_screen import take_screenshot
 
 
@@ -19,8 +19,8 @@ def main():
     menu = FloatingMenu()
     toolbar = Toolbar()
     overlay = TransparentOverlay()
-    # ResizableRubberBand maneja su propio grabador internamente
-    recording_overlay = ResizableRubberBand()
+    # Overlay de grabación: marco de pantalla completa con panel de control
+    recording_overlay = ScreenRecordingOverlay()
 
     # ===== CAPTURA DE PANTALLA =====
 
@@ -139,13 +139,14 @@ def main():
     toolbar.tool_capture_full.connect(handle_full_screenshot)
     toolbar.tool_capture_crop.connect(overlay.set_tool_capture_crop)
 
-    def on_record_crop():
+    def on_toggle_recording():
         if recording_overlay.isVisible():
-            recording_overlay.hide()
+            recording_overlay.close_overlay()
         else:
-            recording_overlay.show()
+            recording_overlay.show_overlay()
 
-    toolbar.tool_record_crop.connect(on_record_crop)
+    toolbar.tool_record_full.connect(on_toggle_recording)
+    toolbar.tool_record_crop.connect(on_toggle_recording)
 
     # ===== CONEXIONES: OVERLAY =====
 

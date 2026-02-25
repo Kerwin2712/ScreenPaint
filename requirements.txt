@@ -3,4 +3,5 @@ opencv-python
 numpy
 PyAudio
 moviepy
+mss
 pyinstaller
