@@ -971,11 +971,6 @@ class TransparentOverlay(QWidget):
         self.update()
         self.interacted.emit()
 
-        for obj in reversed(self.objects):
-            if isinstance(obj, PointObject) and obj.contains(pos):
-                return obj
-        return None
-
     def _check_line_intersections(self, pos):
         lines = [obj for obj in self.objects if isinstance(obj, LineObject)]
         threshold = 10
