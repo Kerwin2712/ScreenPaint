@@ -504,10 +504,6 @@ class TextObject(DrawingObject):
     def draw(self, painter, overlay_rect=None):
         rect = self.get_rect()
         
-        painter.setPen(QPen(Qt.GlobalColor.white, 2, Qt.PenStyle.DashLine))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(rect)
-        
         painter.setPen(QPen(self.color, 1, Qt.PenStyle.SolidLine))
         font = QFont()
         font.setPixelSize(self.font_size)
