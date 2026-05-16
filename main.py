@@ -175,7 +175,7 @@ def main():
     # Solo el botón flotante al iniciar; el overlay se muestra al abrir la barra
     screen = app.primaryScreen()
     screen_geo = screen.geometry()
-    menu.move(screen_geo.right() - 60, screen_geo.center().y())
+    menu.move(20, 20)
     menu.show()
 
     sys.exit(app.exec())
