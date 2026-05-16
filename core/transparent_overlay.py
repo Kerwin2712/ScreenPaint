@@ -12,6 +12,7 @@ from core.geometric_elements import (PointObject, LineObject, CircleObject,
 from tools.capture_screen import take_screenshot
 from config.preferences_manager import PreferencesManager
 from ui.preferences_dialog import PreferencesDialog
+from ui.text_options_widget import TextOptionsWidget
 
 
 class TransparentOverlay(QWidget):
@@ -50,6 +51,12 @@ class TransparentOverlay(QWidget):
         
         self.active_editor = None
         self.editing_text_obj = None
+        
+        self.text_options = TextOptionsWidget(self)
+        self.text_options.hide()
+        self.text_options.font_size_changed.connect(self._change_active_font_size)
+        self.text_options.color_changed.connect(self._change_active_color)
+        self.text_options.moved.connect(self._move_active_editor)
         
         self.currentTool = 'pen'
         self.brushSize = 3
@@ -847,6 +854,35 @@ class TransparentOverlay(QWidget):
         
         # Ajustar tamaño inicial
         self._resize_editor()
+        
+        # Mostrar opciones flotantes
+        self.text_options.show()
+        self.text_options.update_position(self.active_editor.geometry())
+
+    def _change_active_font_size(self, delta):
+        """Cambia el tamaño de fuente del editor activo"""
+        if not self.active_editor:
+            return
+        font = self.active_editor.font()
+        new_size = max(8, font.pixelSize() + delta)
+        font.setPixelSize(new_size)
+        self.active_editor.setFont(font)
+        self._resize_editor()
+
+    def _change_active_color(self, color):
+        """Cambia el color del editor activo"""
+        if not self.active_editor:
+            return
+        self.brushColor = color
+        self.active_editor.setStyleSheet(f"background: transparent; border: 1px dashed rgba(255, 255, 255, 100); color: {color.name()};")
+
+    def _move_active_editor(self, delta):
+        """Mueve el editor activo y actualiza la posición de las opciones"""
+        if not self.active_editor:
+            return
+        geom = self.active_editor.geometry()
+        self.active_editor.move(geom.topLeft() + delta)
+        self.text_options.update_position(self.active_editor.geometry())
 
     def _resize_editor(self):
         """Ajusta el tamaño del editor según el contenido"""
@@ -862,6 +898,9 @@ class TransparentOverlay(QWidget):
         # Mantener la posición pero actualizar el tamaño
         geom = self.active_editor.geometry()
         self.active_editor.setGeometry(geom.x(), geom.y(), int(ideal_width), int(ideal_height))
+        
+        # Actualizar posición de la bola flotante
+        self.text_options.update_position(self.active_editor.geometry())
 
     def _commit_text_editor(self):
         """Guarda el texto del editor y lo convierte en un objeto permanente"""
@@ -899,6 +938,7 @@ class TransparentOverlay(QWidget):
         self.active_editor.deleteLater()
         self.active_editor = None
         self.editing_text_obj = None
+        self.text_options.hide()
         self.update()
         self.interacted.emit()
 
