@@ -22,6 +22,7 @@ class TextDialog(QDialog):
         
         self.text_edit = QTextEdit()
         self.text_edit.setPlaceholderText("Ingrese el texto aquí...")
+        self.text_edit.setFocus()
         layout.addWidget(self.text_edit)
         
         font_layout = QHBoxLayout()
@@ -31,7 +32,7 @@ class TextDialog(QDialog):
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setMinimum(8)
         self.font_size_spin.setMaximum(200)
-        self.font_size_spin.setValue(16)
+        self.font_size_spin.setValue(24)
         self.font_size_spin.setSuffix(" px")
         font_layout.addWidget(self.font_size_spin)
         font_layout.addStretch()
@@ -54,6 +55,7 @@ class TextDialog(QDialog):
         button_layout.addStretch()
         
         self.ok_button = QPushButton("Aceptar")
+        self.ok_button.setDefault(True)
         self.ok_button.clicked.connect(self.accept)
         button_layout.addWidget(self.ok_button)
         

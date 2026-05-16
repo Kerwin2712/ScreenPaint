@@ -1,8 +1,8 @@
 import sys
 import math
 import copy
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog, QColorDialog, QFileDialog
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QPointF
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QInputDialog, QColorDialog, QFileDialog, QTextEdit
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QPointF, QSizeF
 from PyQt6.QtGui import QPainter, QPen, QColor, QPixmap, QFont, QCursor, QPainterPath
 
 # Imports actualizados a nuevas ubicaciones
@@ -12,7 +12,6 @@ from core.geometric_elements import (PointObject, LineObject, CircleObject,
 from tools.capture_screen import take_screenshot
 from config.preferences_manager import PreferencesManager
 from ui.preferences_dialog import PreferencesDialog
-from ui.text_dialog import TextDialog
 
 
 class TransparentOverlay(QWidget):
@@ -47,7 +46,10 @@ class TransparentOverlay(QWidget):
         self.selected_ref_line = None
         self.selected_through_point = None
         
-        self.compass_pts = [] 
+        self.compass_pts = []
+        
+        self.active_editor = None
+        self.editing_text_obj = None
         
         self.currentTool = 'pen'
         self.brushSize = 3
@@ -387,6 +389,12 @@ class TransparentOverlay(QWidget):
                 self._cancel_paste_preview()
                 return
         
+        # Cerrar editor de texto si se hace clic fuera de él
+        if self.active_editor:
+            pos = event.position().toPoint()
+            if not self.active_editor.geometry().contains(pos):
+                self._commit_text_editor()
+        
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             self.lastPoint = pos
@@ -415,7 +423,13 @@ class TransparentOverlay(QWidget):
                         if (isinstance(obj, LineObject) or isinstance(obj, CircleObject) or isinstance(obj, RectangleObject) or isinstance(obj, FreehandObject) or isinstance(obj, TextObject)) and obj.contains(pos):
                             hit_obj = obj
                             break
+                
                 if hit_obj:
+                    if isinstance(hit_obj, TextObject):
+                        # En lugar de solo arrastrar, permitimos editar al hacer clic
+                        self._show_in_place_editor(pos, existing_obj=hit_obj)
+                        return
+                        
                     self.draggingObject = hit_obj
                     self.selected_object = hit_obj
                     self.lastDragPoint = pos
@@ -636,27 +650,7 @@ class TransparentOverlay(QWidget):
                 return
             
             if self.currentTool == 'text':
-                self.press_pos = pos
-                
-                if not self.pending_p1:
-                    self.pending_p1 = PointObject(pos.x(), pos.y(), 0, size=0)
-                else:
-                    corner2 = QPoint(pos.x(), pos.y())
-                    
-                    dialog = TextDialog(None, self.brushColor)
-                    if dialog.exec():
-                        text = dialog.get_text()
-                        font_size = dialog.get_font_size()
-                        color = dialog.get_color()
-                        
-                        if text.strip():
-                            self.save_state()
-                            text_obj = TextObject(self.pending_p1.pos(), corner2, text, font_size, color)
-                            self.objects.append(text_obj)
-                            self.update()
-                    
-                    self.pending_p1 = None
-                    self.interacted.emit()
+                self._show_in_place_editor(pos)
                 return
             
             if self.currentTool == 'pen':
@@ -819,7 +813,95 @@ class TransparentOverlay(QWidget):
 
     # ===== HELPERS INTERNOS =====
 
-    def _get_point_at(self, pos):
+    def _show_in_place_editor(self, pos, existing_obj=None):
+        """Crea y muestra un editor de texto minimalista en la posición dada"""
+        if self.active_editor:
+            self._commit_text_editor()
+
+        self.editing_text_obj = existing_obj
+        self.active_editor = QTextEdit(self)
+        
+        # Configuración minimalista
+        color_name = QColor(self.brushColor).name()
+        self.active_editor.setFrameStyle(0) # Sin bordes
+        self.active_editor.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.active_editor.setStyleSheet(f"background: transparent; border: 1px dashed rgba(255, 255, 255, 100); color: {color_name};")
+        
+        font = QFont()
+        # Usar tamaño mediano (24) o el del objeto existente
+        font_size = existing_obj.font_size if existing_obj else 24
+        font.setPixelSize(font_size)
+        self.active_editor.setFont(font)
+        
+        if existing_obj:
+            self.active_editor.setPlainText(existing_obj.text)
+            rect = existing_obj.get_rect()
+            self.active_editor.setGeometry(rect)
+        else:
+            # Tamaño inicial razonable
+            self.active_editor.setGeometry(pos.x(), pos.y(), 300, 50)
+        
+        self.active_editor.textChanged.connect(self._resize_editor)
+        self.active_editor.show()
+        self.active_editor.setFocus()
+        
+        # Ajustar tamaño inicial
+        self._resize_editor()
+
+    def _resize_editor(self):
+        """Ajusta el tamaño del editor según el contenido"""
+        if not self.active_editor:
+            return
+            
+        doc = self.active_editor.document()
+        doc.setPageSize(QSizeF(self.active_editor.width(), -1))
+        
+        ideal_width = max(300, doc.idealWidth() + 20)
+        ideal_height = max(50, doc.size().height() + 10)
+        
+        # Mantener la posición pero actualizar el tamaño
+        geom = self.active_editor.geometry()
+        self.active_editor.setGeometry(geom.x(), geom.y(), int(ideal_width), int(ideal_height))
+
+    def _commit_text_editor(self):
+        """Guarda el texto del editor y lo convierte en un objeto permanente"""
+        if not self.active_editor:
+            return
+
+        text = self.active_editor.toPlainText()
+        if text.strip():
+            self.save_state()
+            
+            geom = self.active_editor.geometry()
+            p1 = geom.topLeft()
+            p2 = geom.bottomRight()
+            
+            font_size = self.active_editor.font().pixelSize()
+            color = self.brushColor # Usar color actual o mantener el del objeto?
+            
+            if self.editing_text_obj:
+                # Actualizar objeto existente
+                self.editing_text_obj.text = text
+                self.editing_text_obj.rect_corner1 = p1
+                self.editing_text_obj.rect_corner2 = p2
+                self.editing_text_obj.font_size = font_size
+            else:
+                # Crear nuevo objeto
+                new_text = TextObject(p1, p2, text, font_size, color)
+                self.objects.append(new_text)
+        
+        elif self.editing_text_obj:
+            # Si el texto quedó vacío y estábamos editando uno, lo borramos
+            if self.editing_text_obj in self.objects:
+                self.save_state()
+                self.objects.remove(self.editing_text_obj)
+
+        self.active_editor.deleteLater()
+        self.active_editor = None
+        self.editing_text_obj = None
+        self.update()
+        self.interacted.emit()
+
         for obj in reversed(self.objects):
             if isinstance(obj, PointObject) and obj.contains(pos):
                 return obj
@@ -1018,6 +1100,17 @@ class TransparentOverlay(QWidget):
 
     def keyPressEvent(self, event):
         key = event.key()
+        
+        # Atajos para el editor de texto activo
+        if self.active_editor:
+            if key == Qt.Key.Key_Return and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                self._commit_text_editor()
+                event.accept()
+                return
+            elif key == Qt.Key.Key_Escape:
+                self._commit_text_editor()
+                event.accept()
+                return
         
         if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
             if key in self.key_to_tool:

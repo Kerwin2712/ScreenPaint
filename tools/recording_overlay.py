@@ -185,7 +185,7 @@ class ScreenRecordingOverlay(QWidget):
         self.panel.btn_rec.setEnabled(not recording)
         self.panel.btn_pause.setEnabled(recording)
         self.panel.btn_save.setEnabled(recording)
-        self.panel.btn_pause.setText("RUN" if paused else "||")
+        self.panel.btn_pause.setText("▶️" if paused else "⏸️")
 
     def _reposition_panel(self, screen_geo: QRect):
         self.panel.adjustSize()
@@ -219,11 +219,11 @@ class _ControlPanel(QWidget):
         
         btn_style = "background: #222; color: #EEE; border: 1px solid #555; border-radius: 4px; padding: 5px; min-width: 30px;"
         
-        self.btn_rec   = QPushButton("REC");   self.btn_rec.setStyleSheet(btn_style)
-        self.btn_pause = QPushButton("||");    self.btn_pause.setStyleSheet(btn_style)
-        self.btn_save  = QPushButton("Save");  self.btn_save.setStyleSheet(btn_style)
-        self.btn_snap  = QPushButton("Snap");  self.btn_snap.setStyleSheet(btn_style)
-        self.btn_close = QPushButton("X");     self.btn_close.setStyleSheet(btn_style)
+        self.btn_rec   = QPushButton("🔴");   self.btn_rec.setStyleSheet(btn_style)
+        self.btn_pause = QPushButton("⏸️");    self.btn_pause.setStyleSheet(btn_style)
+        self.btn_save  = QPushButton("💾");  self.btn_save.setStyleSheet(btn_style)
+        self.btn_snap  = QPushButton("📸");  self.btn_snap.setStyleSheet(btn_style)
+        self.btn_close = QPushButton("❌");     self.btn_close.setStyleSheet(btn_style)
         self.lbl_time  = QLabel("00:00");      self.lbl_time.setStyleSheet("color: white; font-weight: bold;")
         
         for w in [self.btn_rec, self.btn_pause, self.btn_save, self.btn_snap, self.btn_close, self.lbl_time]:
