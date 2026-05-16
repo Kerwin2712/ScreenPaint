@@ -820,6 +820,13 @@ class TransparentOverlay(QWidget):
 
     # ===== HELPERS INTERNOS =====
 
+    def _get_point_at(self, pos):
+        for obj in reversed(self.objects):
+            if isinstance(obj, PointObject) and obj.contains(pos):
+                return obj
+        return None
+
+
     def _show_in_place_editor(self, pos, existing_obj=None):
         """Crea y muestra un editor de texto minimalista en la posición dada"""
         if self.active_editor:
@@ -1151,6 +1158,8 @@ class TransparentOverlay(QWidget):
                 self._commit_text_editor()
                 event.accept()
                 return
+            # IMPORTANTE: No permitir que otros atajos se procesen mientras se escribe
+            return
         
         if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
             if key in self.key_to_tool:
