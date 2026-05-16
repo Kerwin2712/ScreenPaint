@@ -13,6 +13,7 @@ from tools.capture_screen import take_screenshot
 from config.preferences_manager import PreferencesManager
 from ui.preferences_dialog import PreferencesDialog
 from ui.text_options_widget import TextOptionsWidget
+from ui.circular_color_menu import CircularColorMenu
 
 
 class TransparentOverlay(QWidget):
@@ -57,6 +58,10 @@ class TransparentOverlay(QWidget):
         self.text_options.font_size_changed.connect(self._change_active_font_size)
         self.text_options.color_changed.connect(self._change_active_color)
         self.text_options.moved.connect(self._move_active_editor)
+        
+        self.color_menu = CircularColorMenu(self)
+        self.color_menu.color_selected.connect(self._on_color_selected)
+        self.color_menu.advanced_clicked.connect(self._on_advanced_color_requested)
         
         self.currentTool = 'pen'
         self.brushSize = 3
@@ -190,12 +195,29 @@ class TransparentOverlay(QWidget):
         self._reset_tool_state()
 
     def set_tool_paint(self):
-        color = QColorDialog.getColor(self.brushColor, self, "Seleccionar Color")
-        if color.isValid():
-            self.brushColor = color
+        """Activa la herramienta de pintura y muestra el menú circular de colores"""
         self.currentTool = 'paint'
         self._reset_tool_state()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Mostrar el menú circular en la posición actual del cursor
+        self.color_menu.show_at(QCursor.pos())
+
+    def _on_color_selected(self, color):
+        """Manejador para cuando se elige un color en el menú circular"""
+        self.brushColor = color
+        # Si hay algo seleccionado, aplicarle el color de una vez
+        if self.selected_object:
+            self.save_state()
+            self.selected_object.color = color
+            self._propagate_color_change(self.selected_object)
+            self.update()
+
+    def _on_advanced_color_requested(self):
+        """Manejador para abrir el diálogo de color avanzado"""
+        color = QColorDialog.getColor(self.brushColor, self, "Seleccionar Color Avanzado")
+        if color.isValid():
+            self._on_color_selected(color)
     
     def set_tool_text(self):
         self.currentTool = 'text'
